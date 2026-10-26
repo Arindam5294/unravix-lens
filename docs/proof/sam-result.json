@@ -1,0 +1,44 @@
+{
+  "http": 200,
+  "ms": 1725,
+  "prompt": "handwritten equation",
+  "output_text_head": "<0f>0<|box;x1=160;y1=155;x2=640;y2=231;w=1200;h=900|><|mask;x=0;y=0;data=77,481,~!!#UZ#K{'J.$/mOBM%Z9+97pVFO*rMKupHM(1VAx%U=JpcXj(Ybj[la311WbjFsKM9VI:`&anl9U8(4#Hbw%ila2W_lx5TUKVa/%%6a)Ur-^h=4H+&6R{'ePi6R4#fp^]c:3gMeMP8Kh/xK=ORAk=Cd^gH1F)LHk)W.Nv:8kiQe3roxpC7H&[pt@j%CJ{x1nZ-5f7Qc-l'`P74G=9e8c01lB'VN:mb4)QbgnbFfnt83d5a+71r0XK/-1f+XNNCIBjmscM{UBU?yzxQbbP`#C?hdO-!ga8%lxh/)NBLKR/@'guAdYJfEr_5-V8q$#S@D",
+  "usage": {
+    "images_processed": 1,
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens": 0,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 0
+  },
+  "detections": [
+    {
+      "id": 0,
+      "x1": 160,
+      "y1": 155,
+      "x2": 640,
+      "y2": 231,
+      "w": 1200,
+      "h": 900,
+      "mask": {
+        "h": 77,
+        "w": 481,
+        "bytes": 14096
+      }
+    }
+  ],
+  "regions": [
+    {
+      "id": 0,
+      "x1": 160,
+      "y1": 155,
+      "x2": 640,
+      "y2": 231
+    }
+  ],
+  "est_cost_usd": 0.0025
+}

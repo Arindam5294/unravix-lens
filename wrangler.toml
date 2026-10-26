@@ -1,0 +1,16 @@
+# Unravix Lens API Worker (Swanix Labs). Separate from the unravix.tech Pages project.
+name = "unravix-lens-api"
+main = "worker/src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets (never committed): wrangler secret put MODEL_API_KEY
+
+[vars]
+ALLOWED_ORIGIN = "*"   # tighten to the Lens Pages URL in Phase 4
+DAILY_CAP = "15"
+
+# Create with: wrangler kv namespace create LENS_KV  (then paste the id below)
+[[kv_namespaces]]
+binding = "LENS_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

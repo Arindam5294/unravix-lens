@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Unravix Lens · Find the exact knot</title>
+  <meta name="description" content="Photograph your handwritten solution. Unravix Lens finds the exact step where it went wrong." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+  <header class="top">
+    <a class="brand" href="/"><span class="dot"></span>Unravix <b>Lens</b></a>
+    <button class="theme" id="theme" type="button" aria-label="Toggle light and dark mode">◐</button>
+  </header>
+
+  <main>
+    <section class="hero glass">
+      <p class="eyebrow">Knot Scan · Swanix Labs</p>
+      <h1>Find the exact knot.<br /><span class="grad">Untangle it.</span></h1>
+      <p class="lede">Snap your handwritten solution. Lens maps every step and shows the one where it went wrong, with a fix and three quick check questions.</p>
+      <div class="actions">
+        <button class="btn primary" type="button" disabled>Scan my work · coming soon</button>
+        <span class="status" id="status"><i></i>Checking API…</span>
+      </div>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="sw untied"></span>Untied</li>
+        <li><span class="sw knotted"></span>Knotted</li>
+      </ul>
+    </section>
+
+    <section class="steps">
+      <article class="card" style="--d:0"><span class="num">01</span><h2>Snap</h2><p>Photograph maths, physics or chemistry working in clear light.</p></article>
+      <article class="card" style="--d:1"><span class="num">02</span><h2>Segment</h2><p>SAM 3.1 finds each handwritten step on the page.</p></article>
+      <article class="card" style="--d:2"><span class="num">03</span><h2>Untie</h2><p>Muse Spark finds the first wrong step and explains the misconception.</p></article>
+    </section>
+
+    <p class="privacy">Keep names and personal details off your photos.</p>
+  </main>
+
+  <footer class="foot">© 2026 Swanix Labs · Built with Meta SAM 3.1 and Muse Spark</footer>
+
+  <script>
+    const API = (window.LENS_API || "") + "/api/health";
+    const el = document.getElementById("status");
+    fetch(API).then(r => r.json()).then(j => {
+      el.classList.add(j.ok ? "ok" : "bad");
+      el.lastChild.textContent = j.ok ? "API online" : "API offline";
+    }).catch(() => { el.classList.add("bad"); el.lastChild.textContent = "API offline"; });
+    const root = document.documentElement;
+    const saved = localStorage.getItem("lens-theme");
+    if (saved) root.dataset.theme = saved;
+    document.getElementById("theme").addEventListener("click", () => {
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+      localStorage.setItem("lens-theme", root.dataset.theme);
+    });
+  </script>
+</body>
+</html>

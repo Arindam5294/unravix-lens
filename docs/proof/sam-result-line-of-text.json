@@ -1,0 +1,21 @@
+{
+  "http": 200,
+  "ms": 1341,
+  "prompt": "line of text",
+  "output_text_head": "",
+  "usage": {
+    "images_processed": 1,
+    "input_tokens": 0,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens": 0,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 0
+  },
+  "detections": [],
+  "regions": [],
+  "est_cost_usd": 0.0025
+}

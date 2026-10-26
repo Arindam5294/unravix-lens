@@ -1,0 +1,22 @@
+{
+  "name": "unravix-lens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unravix Lens by Swanix Labs: find the exact knot in handwritten work.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test --no-warnings \"worker/test/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "proof": "node --no-warnings scripts/meta-proof.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20261026.1",
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.40.0"
+  }
+}
