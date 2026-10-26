@@ -23,5 +23,9 @@ Team target: demo-ready **3 Nov**, submitted by **4 Nov 23:59 IST**.
 | 7 | 2-3 Nov | Demo video, slides, cover | Narrated video (Swanix voiceover), deck, cover image |
 | 8 | 3-4 Nov | Submission pack | Hard-requirement pass/fail checklist; submitted |
 
+## Status
+- 26 Oct ~21:42 IST: Phase 1 done (scaffold, proof, tests).
+- 26 Oct ~22:40 IST: Phase 2a + 4 pulled forward without real photos: merged SAM + Spark step boxes with calibration and on-device ink snap, stricter validation and JSON errors, full mobile-first UI with cached sample, Pages routing. 60 unit tests green. Real photos still needed for Phase 2/3 accuracy.
+
 ## Budget
 $150 Meta credits. One analysis costs about $0.015 (SAM $0.0025 + Spark ~$0.012). App-side guard warns at $100 and stops at $140.

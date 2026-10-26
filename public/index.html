@@ -4,59 +4,205 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Unravix Lens · Find the exact knot</title>
-  <meta name="description" content="Photograph your handwritten solution. Unravix Lens finds the exact step where it went wrong." />
+  <meta name="description" content="Photograph your handwritten solution. Unravix Lens maps every step and shows the exact one where it went wrong, with the fix and three check questions." />
+  <meta name="theme-color" content="#06070b" />
+  <meta name="color-scheme" content="dark light" />
+  <!-- API base. Empty = same origin (/api/* routed to the Worker). Override for local dev, e.g. http://127.0.0.1:8787 -->
+  <meta name="lens-api" content="" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Apply the saved theme before first paint (no flash).
+    try { const t = localStorage.getItem("lens-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  </script>
+  <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <div class="aurora" aria-hidden="true"></div>
-  <header class="top">
-    <a class="brand" href="/"><span class="dot"></span>Unravix <b>Lens</b></a>
-    <button class="theme" id="theme" type="button" aria-label="Toggle light and dark mode">◐</button>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+<linearGradient id="ux-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#120E22"></stop><stop offset="1" stop-color="#05060A"></stop></linearGradient>
+<linearGradient id="ux-th" gradientUnits="userSpaceOnUse" x1="130" y1="0" x2="380" y2="0"><stop offset="0" stop-color="#8B5CF6"></stop><stop offset="0.5" stop-color="#6FA8E8"></stop><stop offset="1" stop-color="#3CF2A6"></stop></linearGradient>
+<radialGradient id="ux-gl" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#3CF2A6" stop-opacity="0.85"></stop><stop offset="1" stop-color="#3CF2A6" stop-opacity="0"></stop></radialGradient>
+<filter id="ux-soft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="14"></feGaussianBlur></filter>
+<symbol id="ux-base" viewBox="0 0 512 512">
+          <rect width="512" height="512" rx="116" fill="url(#ux-bg)"></rect>
+          <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M160 300 C160 372 202 408 256 408 C310 408 352 372 352 300 V118" stroke="url(#ux-th)" stroke-width="40" opacity="0.45" filter="url(#ux-soft)"></path>
+            <path d="M160 104 C160 150 160 168 184 190 C214 218 252 196 244 160 C236 126 190 132 174 168" stroke="#0B0916" stroke-width="44"></path>
+            <path d="M160 104 C160 150 160 168 184 190 C214 218 252 196 244 160 C236 126 190 132 174 168" stroke="url(#ux-th)" stroke-width="26"></path>
+            <path d="M174 168 C164 192 160 214 160 246 V300 C160 372 202 408 256 408 C310 408 352 372 352 300 V118" stroke="#0B0916" stroke-width="44"></path>
+            <path d="M174 168 C164 192 160 214 160 246 V300 C160 372 202 408 256 408 C310 408 352 372 352 300 V118" stroke="url(#ux-th)" stroke-width="26"></path>
+          </g>
+        </symbol>
+<symbol id="ux-spark" viewBox="0 0 512 512" overflow="visible">
+          <circle cx="352" cy="104" r="54" fill="url(#ux-gl)"></circle>
+          <circle cx="352" cy="104" r="15" fill="#F2FFF9"></circle>
+          <g stroke="#3CF2A6" stroke-width="8" stroke-linecap="round"><line x1="352" y1="40" x2="352" y2="58"></line><line x1="404" y1="62" x2="391" y2="75"></line><line x1="300" y1="62" x2="313" y2="75"></line><line x1="418" y1="108" x2="400" y2="106"></line></g>
+        </symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v4h14v-4"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3l1.8 5.2L18 10l-5.2 1.8L11 17l-1.8-5.2L4 10l5.2-1.8zM19 15v5M16.5 17.5h5"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.3"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.5 8.5 0 0 1 9.4 4 8.5 8.5 0 1 0 20 14.6z"/></symbol>
+    </defs>
+  </svg>
+
+  <a class="skip" href="#scan">Skip to Knot Scan</a>
+
+  <header class="nav" id="nav">
+    <a class="logo" href="#top" aria-label="Unravix Lens home">
+      <svg class="mark" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><use href="#ux-base"/><g class="mark__spark"><use href="#ux-spark"/></g></svg>
+      <span>Unravix <b>Lens</b></span>
+    </a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="#scan">Knot Scan</a><a href="#how">How it works</a><a href="#report">Knot Report</a>
+    </nav>
+    <button class="tg" id="theme" type="button" role="switch" aria-checked="false" aria-label="Light mode">
+      <span class="tg__t" aria-hidden="true">
+        <svg class="tg__i tg__sun"><use href="#i-sun"/></svg>
+        <svg class="tg__i tg__moon"><use href="#i-moon"/></svg>
+        <span class="tg__k"></span>
+      </span>
+    </button>
   </header>
 
-  <main>
-    <section class="hero glass">
-      <p class="eyebrow">Knot Scan · Swanix Labs</p>
-      <h1>Find the exact knot.<br /><span class="grad">Untangle it.</span></h1>
-      <p class="lede">Snap your handwritten solution. Lens maps every step and shows the one where it went wrong, with a fix and three quick check questions.</p>
-      <div class="actions">
-        <button class="btn primary" type="button" disabled>Scan my work · coming soon</button>
-        <span class="status" id="status"><i></i>Checking API…</span>
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="aurora"></div>
+        <svg class="threads" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <linearGradient id="th-g" x1="0" x2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset=".55" stop-color="#60a5fa"/><stop offset="1" stop-color="#3cf2a6"/></linearGradient>
+          </defs>
+          <path class="thread t1" d="M-40 640 C 220 420, 360 820, 600 560 S 900 260, 1080 520 S 1320 760, 1500 420"/>
+          <path class="thread t2" d="M-60 300 C 200 520, 420 140, 640 360 C 820 540, 760 700, 980 600 S 1260 240, 1500 330"/>
+          <path class="thread t3" d="M120 900 C 260 640, 520 700, 560 480 C 600 260, 840 220, 900 420 C 960 620, 1180 640, 1460 560"/>
+          <g class="knot-dot" transform="translate(905 430)"><circle r="22"/><circle r="5"/></g>
+        </svg>
       </div>
-      <ul class="legend" aria-label="Legend">
-        <li><span class="sw untied"></span>Untied</li>
-        <li><span class="sw knotted"></span>Knotted</li>
-      </ul>
+      <div class="hero__copy">
+        <p class="eyebrow">Lens · Knot Scan</p>
+        <h1 class="title" id="hero-title">Find the exact knot. <em>Untangle it.</em></h1>
+        <p class="sub">Snap a handwritten maths, physics or chemistry solution. Lens maps every step, finds the first one that went wrong, and shows you the fix with three quick check questions.</p>
+        <div class="btns">
+          <button class="btn" type="button" data-action="scan"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Scan my work</button>
+          <button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Try a sample</button>
+        </div>
+        <ul class="legend" aria-label="Colour key">
+          <li><span class="sw sw--ok"></span>Untied</li>
+          <li><span class="sw sw--knot"></span>Knotted</li>
+          <li><span class="sw sw--carry"></span>Carried error</li>
+        </ul>
+        <p class="powered"><span class="dot" id="api-dot" aria-hidden="true"></span><span id="api-text">Built with Meta SAM 3.1 and Muse Spark</span></p>
+      </div>
     </section>
 
-    <section class="steps">
-      <article class="card" style="--d:0"><span class="num">01</span><h2>Snap</h2><p>Photograph maths, physics or chemistry working in clear light.</p></article>
-      <article class="card" style="--d:1"><span class="num">02</span><h2>Segment</h2><p>SAM 3.1 finds each handwritten step on the page.</p></article>
-      <article class="card" style="--d:2"><span class="num">03</span><h2>Untie</h2><p>Muse Spark finds the first wrong step and explains the misconception.</p></article>
+    <!-- KNOT SCAN -->
+    <section class="section" id="scan" aria-labelledby="scan-title">
+      <div class="section__head">
+        <p class="eyebrow">Knot Scan</p>
+        <h2 id="scan-title">Show Lens your working</h2>
+      </div>
+
+      <div class="scan glass" id="scan-panel" data-state="idle">
+        <!-- idle -->
+        <div class="drop" id="drop" data-view="idle">
+          <div class="drop__zone" id="dropzone">
+            <div class="drop__icon" aria-hidden="true"><svg class="i"><use href="#i-camera"/></svg></div>
+            <p class="drop__title"><span class="only-touch">Take a photo of one solution</span><span class="only-desk">Drop a photo of one solution here</span></p>
+            <p class="drop__hint">JPEG, PNG, WebP or HEIC. Lens shrinks it to 1600 px and strips location data before upload.</p>
+            <div class="btns btns--center">
+              <label class="btn only-touch-flex" for="file-camera"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Open camera</label>
+              <label class="btn btn--ghost btn--upload" for="file-any"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Choose a photo</label>
+              <button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Try a sample</button>
+            </div>
+            <input class="vh" id="file-camera" type="file" accept="image/*" capture="environment" />
+            <input class="vh" id="file-any" type="file" accept="image/*,.heic,.heif" />
+          </div>
+          <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b>Keep names and personal info out of the photo.</b> Photos are analysed and not stored. Your Knot Report stays on this device.</span></p>
+        </div>
+
+        <!-- working + result share the stage -->
+        <div class="work" data-view="work">
+          <figure class="stage" id="stage">
+            <div class="stage__frame">
+              <img id="photo" alt="Your handwritten solution" />
+              <svg class="overlay" id="overlay" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+              <div class="labels" id="labels"></div>
+              <div class="scanline" aria-hidden="true"></div>
+              <div class="stage__grid" aria-hidden="true"></div>
+            </div>
+            <figcaption class="stage__cap" id="stage-cap"></figcaption>
+          </figure>
+
+          <div class="side">
+            <div class="progress" data-view="working" role="status" aria-live="polite">
+              <ol class="progress__list" id="progress">
+                <li data-step="0"><i></i><span>Preparing photo</span></li>
+                <li data-step="1"><i></i><span>Mapping lines with SAM 3.1</span></li>
+                <li data-step="2"><i></i><span>Reading every step with Muse Spark</span></li>
+                <li data-step="3"><i></i><span>Finding the knot</span></li>
+              </ol>
+            </div>
+
+            <!-- scanning skeleton -->
+            <div class="card glass skel" id="skel" data-view="working" aria-hidden="true">
+              <div class="sk sk--pill"></div>
+              <div class="sk sk--h"></div>
+              <div class="sk"></div><div class="sk sk--short"></div>
+              <div class="sk sk--block"></div>
+              <div class="sk"></div><div class="sk sk--short"></div>
+            </div>
+            <!-- result -->
+            <article class="card glass knot" id="knot-card" data-view="result" aria-live="polite"></article>
+
+            <!-- error -->
+            <div class="card glass err" id="err-card" data-view="error" role="alert"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <p class="privacy">Keep names and personal details off your photos.</p>
+    <!-- HOW -->
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="section__head">
+        <p class="eyebrow">How it works</p>
+        <h2 id="how-title">Three steps, one knot</h2>
+      </div>
+      <div class="cards">
+        <article class="card glass reveal" style="--d:0"><span class="num">01</span><h3>Snap</h3><p>Photograph one handwritten solution in good light. Lens shrinks it and strips location data on your phone.</p></article>
+        <article class="card glass reveal" style="--d:1"><span class="num">02</span><h3>Segment</h3><p>Meta SAM 3.1 finds the lines of working. Muse Spark fills any line SAM groups or misses, and Lens snaps each box to the ink.</p></article>
+        <article class="card glass reveal" style="--d:2"><span class="num">03</span><h3>Untie</h3><p>Muse Spark finds the first wrong step, names the misconception, gives the fix and three check questions.</p></article>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section class="section" id="report" aria-labelledby="report-title">
+      <div class="section__head section__head--row">
+        <div>
+          <p class="eyebrow">Knot Report</p>
+          <h2 id="report-title">Knots that keep coming back</h2>
+        </div>
+        <button class="btn btn--ghost btn--sm" type="button" id="clear-report" hidden><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg>Clear</button>
+      </div>
+      <div id="report-body" class="report"></div>
+    </section>
   </main>
 
-  <footer class="foot">© 2026 Swanix Labs · Built with Meta SAM 3.1 and Muse Spark</footer>
-
-  <script>
-    const API = (window.LENS_API || "") + "/api/health";
-    const el = document.getElementById("status");
-    fetch(API).then(r => r.json()).then(j => {
-      el.classList.add(j.ok ? "ok" : "bad");
-      el.lastChild.textContent = j.ok ? "API online" : "API offline";
-    }).catch(() => { el.classList.add("bad"); el.lastChild.textContent = "API offline"; });
-    const root = document.documentElement;
-    const saved = localStorage.getItem("lens-theme");
-    if (saved) root.dataset.theme = saved;
-    document.getElementById("theme").addEventListener("click", () => {
-      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
-      localStorage.setItem("lens-theme", root.dataset.theme);
-    });
-  </script>
+  <footer class="foot">
+    <span>© 2026 Swanix Labs</span>
+    <span>Unravix Lens · built with Meta SAM 3.1 and Muse Spark 1.3</span>
+  </footer>
 </body>
 </html>

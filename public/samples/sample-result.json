@@ -1,0 +1,133 @@
+{
+  "ok": true,
+  "version": "sample",
+  "sample": true,
+  "segmentation": "sam+spark",
+  "boxes": [
+    {
+      "step_n": 1,
+      "source": "sam",
+      "x1": 133,
+      "y1": 172,
+      "x2": 533,
+      "y2": 257,
+      "status": "correct"
+    },
+    {
+      "step_n": 2,
+      "source": "spark",
+      "x1": 110,
+      "y1": 396,
+      "x2": 560,
+      "y2": 473,
+      "status": "incorrect"
+    },
+    {
+      "step_n": 3,
+      "source": "spark",
+      "x1": 105,
+      "y1": 596,
+      "x2": 490,
+      "y2": 673,
+      "status": "consequence"
+    },
+    {
+      "step_n": 4,
+      "source": "spark",
+      "x1": 95,
+      "y1": 795,
+      "x2": 240,
+      "y2": 854,
+      "status": "consequence"
+    }
+  ],
+  "analysis": {
+    "subject": "maths",
+    "steps": [
+      {
+        "n": 1,
+        "box_id": 0,
+        "bbox": [
+          110,
+          190,
+          560,
+          290
+        ],
+        "transcription": "3(x - 2) = 2x + 5",
+        "status": "correct"
+      },
+      {
+        "n": 2,
+        "box_id": null,
+        "bbox": [
+          110,
+          415,
+          560,
+          505
+        ],
+        "transcription": "3x - 2 = 2x + 5",
+        "status": "incorrect"
+      },
+      {
+        "n": 3,
+        "box_id": null,
+        "bbox": [
+          105,
+          615,
+          490,
+          705
+        ],
+        "transcription": "3x - 2x = 5 + 2",
+        "status": "consequence"
+      },
+      {
+        "n": 4,
+        "box_id": null,
+        "bbox": [
+          95,
+          815,
+          240,
+          885
+        ],
+        "transcription": "x = 7",
+        "status": "consequence"
+      }
+    ],
+    "knot": {
+      "step_n": 2,
+      "what_is_wrong": "Wrote 3(x - 2) as 3x - 2, leaving the 2 unmultiplied by 3.",
+      "misconception": "Thinking the 3 outside only multiplies the x and not the second term in the bracket.",
+      "explanation": "Good try rearranging later steps. The slip is right at the start when opening the bracket. The 3 must multiply both x and -2, so 3 times -2 is -6, not -2.",
+      "corrected_step": "3x - 6 = 2x + 5"
+    },
+    "check_questions": [
+      {
+        "q": "Expand 3(x - 2).",
+        "answer": "3x - 6"
+      },
+      {
+        "q": "Expand 4(y - 3).",
+        "answer": "4y - 12"
+      },
+      {
+        "q": "Solve correctly: 3(x - 2) = 2x + 5, what is x?",
+        "answer": "x = 11"
+      }
+    ],
+    "knot_report": {
+      "error_type": "distributive-property error",
+      "topic": "expanding brackets in linear equations",
+      "tip": "When you see a(b + c), multiply a by both b and c: check with 3(x - 2) = 3*x + 3*(-2)."
+    },
+    "confidence": 0.96
+  },
+  "timing": {
+    "total_ms": 10311,
+    "sam_ms": 1912,
+    "spark_ms": 8396
+  },
+  "sam": {
+    "boxes": 1,
+    "calls": 1
+  }
+}

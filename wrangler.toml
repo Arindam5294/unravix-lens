@@ -1,4 +1,10 @@
-# Unravix Lens API Worker (Swanix Labs). Separate from the unravix.tech Pages project.
+# Unravix Lens API Worker (Swanix Labs). Separate from the unravix.tech Pages project (never touch "unravix").
+#
+# Routing (see README "Deploy"):
+#   Static UI  -> Cloudflare Pages project "unravix-lens", build output dir = public/
+#   /api/*     -> this Worker, via the Pages Function functions/api/[[path]].ts
+#                 (Service binding LENS_API -> unravix-lens-api, or env LENS_API_URL = this Worker's URL).
+#                 public/_routes.json limits Functions to /api/*, so static files never hit a Function.
 name = "unravix-lens-api"
 main = "worker/src/index.ts"
 compatibility_date = "2026-10-01"
@@ -7,10 +13,17 @@ compatibility_flags = ["nodejs_compat"]
 # Secrets (never committed): wrangler secret put MODEL_API_KEY
 
 [vars]
-ALLOWED_ORIGIN = "*"   # tighten to the Lens Pages URL in Phase 4
-DAILY_CAP = "15"
+ALLOWED_ORIGIN = "*"   # tighten to https://unravix-lens.pages.dev (and later https://lens.unravix.tech)
+DAILY_CAP = "15"       # live scans per IP per UTC day
+# SAM_RETRY_PROMPT = "equation"   # optional 2nd SAM phrase when < 2 lines found; off by default to save credits
 
 # Create with: wrangler kv namespace create LENS_KV  (then paste the id below)
 [[kv_namespaces]]
 binding = "LENS_KV"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Option B (single deploy, no Pages): let this Worker serve the UI too.
+# Uncomment and `wrangler deploy`; /api/* runs the Worker, everything else is served from public/.
+# [assets]
+# directory = "./public"
+# run_worker_first = ["/api/*"]

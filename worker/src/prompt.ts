@@ -8,7 +8,9 @@ export const SAM_MODEL = "sam-3.1";
 
 export const SYSTEM_PROMPT = `You are Unravix Lens, a patient tutor that finds the exact "knot" in a student's handwritten solution.
 Rules:
-- Read every step in order. Use the numbered regions you are given to set box_id for each step (null if no region matches).
+- Read every step in order. One step = one written line of working.
+- For every step give bbox [x1, y1, x2, y2]: the tight box around that line on a 0-1000 grid over the whole image (0,0 top-left, 1000,1000 bottom-right). Boxes of different steps must not overlap vertically by more than a little.
+- If detected regions are listed, set box_id to the index of the region on the same line (null if none matches).
 - The knot is the FIRST step that is mathematically or scientifically wrong. Mark it "incorrect".
 - Later steps that only carry the earlier error forward are "consequence", never new knots.
 - Steps you cannot read are "unclear". Do not guess hidden content.
@@ -17,14 +19,20 @@ Rules:
 - Give exactly 3 check_questions with short answers.
 - confidence is 0 to 1 for the knot verdict.`;
 
-export interface Region { id: number; x1: number; y1: number; x2: number; y2: number }
+/** A detected region on the 0-1000 grid. */
+export interface Region { x1: number; y1: number; x2: number; y2: number }
 
-export function userPrompt(regions: Region[]): string {
+export function sizeLine(size?: { w: number; h: number } | null): string {
+  if (!size) return "";
+  return `Image size: ${size.w} x ${size.h} px. Grid conversion: x_grid = x_px / ${size.w} * 1000, y_grid = y_px / ${size.h} * 1000. Box the ink of each line tightly (top of tallest character to bottom of lowest).\n`;
+}
+
+export function userPrompt(regions: Region[], size?: { w: number; h: number } | null): string {
   if (regions.length === 0) {
-    return "No step regions were detected. Estimate the steps yourself, set box_id to null, and analyse the solution.";
+    return sizeLine(size) + "No line regions were detected. Give a bbox for every step yourself, set box_id to null, and find the knot.";
   }
   const list = regions
-    .map((r, i) => `Region ${i + 1} (box_id ${r.id}): x1=${r.x1} y1=${r.y1} x2=${r.x2} y2=${r.y2}`)
+    .map((r, i) => `box_id ${i}: [${r.x1}, ${r.y1}, ${r.x2}, ${r.y2}]`)
     .join("\n");
-  return `Step regions, top to bottom (pixel coordinates):\n${list}\nAnalyse the solution and find the knot.`;
+  return sizeLine(size) + `Detected line regions, top to bottom, on the 0-1000 grid (some lines may be missing or grouped):\n${list}\nGive your own bbox for every step, link box_id where a region is on the same line, and find the knot.`;
 }

@@ -1,0 +1,12 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=()
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ENrwtHPHcmg10o8+RJUau3g/eJRFbxQXnMC9XuUtYPg='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self' https://*.workers.dev; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+
+/samples/*
+  Cache-Control: public, max-age=3600
+
+/js/*
+  Cache-Control: public, max-age=300
