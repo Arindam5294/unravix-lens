@@ -64,7 +64,7 @@ export type StepStatus = "correct" | "incorrect" | "consequence" | "unclear";
 
 export interface KnotAnalysis {
   subject: "maths" | "physics" | "chemistry" | "other";
-  steps: { n: number; box_id: number | null; bbox: number[]; transcription: string; status: StepStatus }[];
+  steps: { n: number; box_id: number | null; bbox: number[]; transcription: string; status: StepStatus; spark_n?: number }[];
   knot: {
     step_n: number;
     what_is_wrong: string;

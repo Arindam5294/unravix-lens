@@ -4,6 +4,7 @@ import { SAM_MODEL, SAM_PROMPT, SPARK_MODEL, SYSTEM_PROMPT, userPrompt } from ".
 import { KNOT_SCHEMA, KNOT_SCHEMA_NAME, parseAnalysis, type KnotAnalysis } from "./schema.ts";
 import { extractSseText, parseSamOutput } from "./sam.ts";
 import { mergeStepBoxes, normalizeSam, segmentationLabel, sortAndMergeRows, type NBox, type StepBox } from "./regions.ts";
+import { orderSteps } from "./order.ts";
 import { dataUrlSize, type ImageSize } from "./imagesize.ts";
 import { samCostUsd, sparkCostUsd, type SparkUsage } from "./budget.ts";
 
@@ -99,7 +100,10 @@ export interface PipelineOptions {
 
 export interface PipelineResult {
   analysis: KnotAnalysis;
-  boxes: (StepBox & { status: KnotAnalysis["steps"][number]["status"] })[];
+  boxes: (StepBox & { status: KnotAnalysis["steps"][number]["status"]; col: number })[];
+  /** "spark" = Spark's own step order kept; "columns" = steps renumbered in column-aware reading order */
+  order: "spark" | "columns";
+  columns: number;
   segmentation: ReturnType<typeof segmentationLabel>;
   image: ImageSize | null;
   sam: { boxes: number; detections: number; calls: number; ms: number };
@@ -142,10 +146,20 @@ export async function analyzeImage(apiKey: string, imageDataUrl: string, opts: P
   spend(spark.costUsd);
 
   const status = new Map(spark.analysis.steps.map((s) => [s.n, s.status]));
-  const boxes = mergeStepBoxes(sam.boxes, spark.analysis.steps).map((b) => ({ ...b, status: status.get(b.step_n) ?? "unclear" }));
+  const merged = mergeStepBoxes(sam.boxes, spark.analysis.steps).map((b) => ({ ...b, status: status.get(b.step_n) ?? "unclear" }));
+  // Column-aware order: renumber only when Spark interleaved columns; knot + statuses move with their lines.
+  const ord = orderSteps(spark.analysis.steps, merged, spark.analysis.knot?.step_n ?? null);
+  const analysis: KnotAnalysis = {
+    ...spark.analysis,
+    steps: ord.steps,
+    knot: spark.analysis.knot && ord.knot_step !== null ? { ...spark.analysis.knot, step_n: ord.knot_step } : spark.analysis.knot,
+  };
+  const boxes = ord.boxes;
   return {
-    analysis: spark.analysis,
+    analysis,
     boxes,
+    order: ord.order,
+    columns: ord.columns,
     segmentation: segmentationLabel(boxes),
     image: size,
     sam: { boxes: sam.boxes.length, detections: sam.detections, calls: samCalls, ms: samMs },

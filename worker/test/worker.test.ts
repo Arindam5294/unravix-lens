@@ -58,7 +58,7 @@ test("GET /api/health", async () => {
   const body = (await res.json()) as { ok: boolean; configured: boolean; version: string };
   assert.equal(body.ok, true);
   assert.equal(body.configured, false);
-  assert.match(body.version, /phase2a/);
+  assert.match(body.version, /phase3a/);
 });
 
 test("method, route and configuration errors use the JSON error shape", async () => {
@@ -156,4 +156,23 @@ test("analyze: zero readable steps -> no_steps", async () => {
   const r = await worker.fetch(post({ image: JPEG }), mkEnv());
   assert.equal(r.status, 422);
   assert.equal(await errCode(r), "no_steps");
+});
+
+test("analyze: two-column page with interleaved Spark numbering -> renumbered left column first, knot follows its line", async () => {
+  // left column 4 lines, right column 3 lines; Spark numbered by y (interleaved); knot on the right.
+  const L = (n: number, y: number) => ({ n, box_id: null, bbox: [80, y, 460, y + 30], transcription: `L${y}`, status: "correct" });
+  const R = (n: number, y: number, status = "correct") => ({ n, box_id: null, bbox: [640, y, 900, y + 30], transcription: `R${y}`, status });
+  const steps = [L(1, 300), R(2, 310), L(3, 400), R(4, 405, "incorrect"), L(5, 500), R(6, 505, "consequence"), L(7, 600)];
+  sparkBody = { choices: [{ message: { content: JSON.stringify({ ...sparkAnalysis, steps, knot: { ...sparkAnalysis.knot, step_n: 4 } }) } }], usage: { prompt_tokens: 1000, completion_tokens: 1000 } };
+  const res = await worker.fetch(post({ image: JPEG }), mkEnv());
+  const body = (await res.json()) as any;
+  assert.equal(body.order, "columns");
+  assert.equal(body.columns, 2);
+  assert.deepEqual(body.analysis.steps.map((s: any) => s.transcription), ["L300", "L400", "L500", "L600", "R310", "R405", "R505"]);
+  assert.equal(body.analysis.knot.step_n, 6);
+  assert.equal(body.analysis.steps.find((s: any) => s.n === 6).spark_n, 4);
+  const byN = new Map(body.boxes.map((b: any) => [b.step_n, b]));
+  assert.equal((byN.get(6) as any).status, "incorrect");
+  assert.equal((byN.get(7) as any).status, "consequence");
+  assert.equal((byN.get(6) as any).col, 1);
 });

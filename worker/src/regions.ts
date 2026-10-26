@@ -65,19 +65,34 @@ export function union(a: NBox, b: NBox): NBox {
   return { x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1), x2: Math.max(a.x2, b.x2), y2: Math.max(a.y2, b.y2) };
 }
 
-/** Sort top-to-bottom (then left-to-right) and merge boxes on the same row (row overlap > threshold). */
+/**
+ * Horizontal gap between two boxes (0 when they overlap). Used so pieces of one line merge but two
+ * columns that happen to share a row stay apart (Phase 3a: the eigenvalue page's left notes and right
+ * determinant working were unioned into one page-wide box, which then drifted onto the wrong ink).
+ */
+export function hGap(a: NBox, b: NBox): number {
+  return Math.max(0, Math.max(a.x1, b.x1) - Math.min(a.x2, b.x2));
+}
+
+/** Two boxes on one row are pieces of the same line when the gap between them is small for that row height. */
+export function sameLine(a: NBox, b: NBox, threshold = 0.5): boolean {
+  if (rowOverlap(a, b) <= threshold) return false;
+  return hGap(a, b) <= Math.max(12, 1.2 * Math.min(height(a), height(b)));
+}
+
+/** Sort top-to-bottom (then left-to-right) and merge pieces of the same line (same row, close together). */
 export function sortAndMergeRows<T extends NBox>(boxes: T[], threshold = 0.5, merge: (a: T, b: T) => T = (a, b) => ({ ...a, ...union(a, b) })): T[] {
   const sorted = [...boxes].sort((a, b) => a.y1 - b.y1 || a.x1 - b.x1);
   const rows: T[] = [];
   for (const b of sorted) {
-    const last = rows[rows.length - 1];
-    if (last && rowOverlap(last, b) > threshold) {
-      rows[rows.length - 1] = merge(last, b);
-      continue;
+    let hit = -1;
+    for (let k = rows.length - 1; k >= Math.max(0, rows.length - 4); k--) {
+      if (sameLine(rows[k], b, threshold)) { hit = k; break; }
     }
+    if (hit >= 0) { rows[hit] = merge(rows[hit], b); continue; }
     rows.push({ ...b });
   }
-  return rows;
+  return rows.sort((a, b) => a.y1 - b.y1 || a.x1 - b.x1);
 }
 
 export interface SparkStepLike { n: number; bbox: unknown; box_id?: number | null }

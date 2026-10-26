@@ -15,7 +15,7 @@ export interface Env {
   SAM_RETRY_PROMPT?: string;      // optional second SAM phrase when < 2 lines found (off by default)
 }
 
-export const VERSION = "0.2.0-phase2a";
+export const VERSION = "0.3.0-phase3a";
 /** Decoded image bytes. The client resizes to <= 1600 px JPEG, typically 150-600 KB. */
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Raw request body cap: base64 inflates by 4/3, plus JSON overhead. */
@@ -122,6 +122,8 @@ async function analyze(req: Request, env: Env): Promise<Response> {
       version: VERSION,
       segmentation: r.segmentation,
       boxes: r.boxes,
+      order: r.order,
+      columns: r.columns,
       image: r.image,
       analysis: r.analysis,
       timing: { total_ms: Date.now() - t0, sam_ms: r.sam.ms, spark_ms: r.spark.ms },

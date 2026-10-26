@@ -1,6 +1,7 @@
 // Unravix Lens front end (vanilla ES modules, no build step). Swanix Labs.
 import { prepareImage, PrepError } from "./image.js";
 import { snapToImage } from "./snap.js";
+import { boxToPx, clampBox, contentRect, parseObjectPosition, placeLabels } from "./layout.js";
 import * as Report from "./report.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -21,6 +22,7 @@ const knotCard = $("#knot-card");
 const errCard = $("#err-card");
 let lastImage = null; // { dataUrl, url } of the last live photo, for "Try again"
 let runId = 0;
+let shownBoxes = []; // boxes currently drawn, for re-layout on resize
 
 /* ---------------- theme ---------------- */
 function initTheme() {
@@ -74,8 +76,17 @@ function setProgress(step) {
   });
 }
 
+/* ---------------- fixed header offset ---------------- */
+function navOffset() {
+  const nav = $("#nav");
+  return nav ? Math.ceil(nav.getBoundingClientRect().bottom) + 12 : 84;
+}
+function syncNavOffset() {
+  document.documentElement.style.setProperty("--nav-offset", `${navOffset()}px`);
+}
+
 function scrollToPanel() {
-  const top = panel.getBoundingClientRect().top + scrollY - 84;
+  const top = panel.getBoundingClientRect().top + scrollY - navOffset();
   if (Math.abs(scrollY - top) > 40) scrollTo({ top, behavior: reduced() ? "auto" : "smooth" });
 }
 
@@ -83,6 +94,46 @@ function clearStage() {
   overlay.innerHTML = "";
   labels.innerHTML = "";
   cap.innerHTML = "";
+  shownBoxes = [];
+}
+
+/* ---------------- overlay geometry ---------------- */
+/**
+ * Size the overlay + badge layers to the photo's rendered pixels. The <img> is width:100% with a max-height
+ * and object-fit: contain, so a tall phone photo is pillarboxed: the layers must cover the image, not the frame.
+ * Returns the image rect size in px, or null before the photo has loaded.
+ */
+function fitLayer() {
+  const nw = photo.naturalWidth, nh = photo.naturalHeight, bw = photo.clientWidth, bh = photo.clientHeight;
+  if (!nw || !nh || !bw || !bh) return null;
+  const cs = getComputedStyle(photo);
+  const fit = cs.objectFit || "fill";
+  const r0 = contentRect(nw, nh, bw, bh, fit);
+  const r = contentRect(nw, nh, bw, bh, fit, parseObjectPosition(cs.objectPosition, bw - r0.width, bh - r0.height));
+  for (const el of [overlay, labels]) {
+    el.style.left = `${photo.offsetLeft + r.left}px`;
+    el.style.top = `${photo.offsetTop + r.top}px`;
+    el.style.width = `${r.width}px`;
+    el.style.height = `${r.height}px`;
+  }
+  return { width: r.width, height: r.height };
+}
+
+/** Place every badge next to its box, without collisions and inside the image. */
+function layoutLabels() {
+  const size = fitLayer();
+  if (!size) return;
+  const els = $$(".lbl", labels);
+  const items = els.map((el) => {
+    const b = shownBoxes.find((x) => String(x.step_n) === el.dataset.step);
+    return b && { id: el, box: boxToPx(clampBox(b, BOX_PAD), size.width, size.height), w: el.offsetWidth, h: el.offsetHeight, priority: el.classList.contains("lbl--knot") ? 2 : 0 };
+  }).filter(Boolean);
+  const pos = placeLabels(items, size);
+  for (const [el, p] of pos) {
+    el.style.left = `${Math.round(p.left)}px`;
+    el.style.top = `${Math.round(p.top)}px`;
+    el.dataset.side = p.side;
+  }
 }
 
 async function showPhoto(src) {
@@ -165,18 +216,22 @@ const KIND = { correct: "ok", incorrect: "knot", consequence: "carry", unclear: 
 const KIND_WORD = { ok: "Untied", knot: "Knot", carry: "Carried", unclear: "Unclear" };
 const SEG = { "sam-3.1": "SAM 3.1 boxes", "sam+spark": "SAM 3.1 + Spark boxes", "spark-estimate": "Spark-estimated boxes", none: "No boxes" };
 
+const BOX_PAD = 6; // grid units around the ink
+
 function drawBoxes(boxes) {
   overlay.innerHTML = "";
   labels.innerHTML = "";
+  shownBoxes = boxes;
   const ns = "http://www.w3.org/2000/svg";
   boxes.forEach((b, i) => {
     const kind = KIND[b.status] || "unclear";
-    const pad = 6;
+    // clamp to the image (inset 1 so the stroke is not cut at the edge)
+    const c = clampBox(b, BOX_PAD, 1);
     const r = document.createElementNS(ns, "rect");
-    r.setAttribute("x", String(Math.max(0, b.x1 - pad)));
-    r.setAttribute("y", String(Math.max(0, b.y1 - pad)));
-    r.setAttribute("width", String(Math.min(1000, b.x2 + pad) - Math.max(0, b.x1 - pad)));
-    r.setAttribute("height", String(Math.min(1000, b.y2 + pad) - Math.max(0, b.y1 - pad)));
+    r.setAttribute("x", String(c.x1));
+    r.setAttribute("y", String(c.y1));
+    r.setAttribute("width", String(c.x2 - c.x1));
+    r.setAttribute("height", String(c.y2 - c.y1));
     r.setAttribute("rx", "8");
     r.setAttribute("pathLength", "100");
     r.setAttribute("class", `bx bx--${kind}`);
@@ -186,29 +241,24 @@ function drawBoxes(boxes) {
 
     const l = document.createElement("button");
     l.type = "button";
-    // Prefer a tag to the right of the line (clear of the line above); fall back to above/below.
-    const side = b.x2 + pad < 760;
-    const below = !side && b.y1 < 70;
-    l.className = `lbl lbl--${kind}${side ? " is-side" : below ? " is-below" : ""}`;
-    if (side) {
-      l.style.left = `${Math.min(1000, b.x2 + pad) / 10}%`;
-      l.style.top = `${(b.y1 + b.y2) / 20}%`;
-    } else {
-      l.style.left = `${Math.max(0, Math.min(86, (b.x1 - pad) / 10))}%`;
-      l.style.top = `${(below ? Math.min(1000, b.y2 + pad) : Math.max(0, b.y1 - pad)) / 10}%`;
-    }
+    l.className = `lbl lbl--${kind} is-placed`;
     l.style.setProperty("--i", String(i));
     l.dataset.step = String(b.step_n);
     l.textContent = kind === "knot" ? `Knot · step ${b.step_n}` : `${kind === "ok" ? "✓" : kind === "carry" ? "↯" : "?"} ${b.step_n}`;
     l.setAttribute("aria-label", `Step ${b.step_n}: ${KIND_WORD[kind]}`);
-    l.addEventListener("click", () => focusStep(b.step_n));
+    l.addEventListener("click", () => focusStep(b.step_n, true));
     labels.appendChild(l);
   });
+  layoutLabels();
 }
 
-function focusStep(n) {
+function focusStep(n, fromBadge = false) {
   $$(".bx").forEach((r) => r.classList.toggle("is-focus", r.dataset.step === String(n)));
   $$(".steps li").forEach((li) => li.classList.toggle("is-focus", li.dataset.step === String(n)));
+  if (fromBadge) {
+    // scroll-margin-top keeps the row clear of the fixed header
+    $(`.steps li[data-step="${n}"]`)?.scrollIntoView({ block: "nearest", behavior: reduced() ? "auto" : "smooth" });
+  }
 }
 
 function renderResult(result) {
@@ -407,7 +457,17 @@ async function demoHooks() {
   if (q.has("scroll")) panel.scrollIntoView({ block: "start" });
 }
 
+function initLayout() {
+  syncNavOffset();
+  const relayout = () => { syncNavOffset(); if (shownBoxes.length) layoutLabels(); else fitLayer(); };
+  addEventListener("resize", relayout, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(relayout).observe(photo);
+  photo.addEventListener("load", relayout);
+  document.fonts?.ready?.then(relayout).catch(() => {});
+}
+
 initTheme();
+initLayout();
 initReveal();
 initInputs();
 renderReport();
