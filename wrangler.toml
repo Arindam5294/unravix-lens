@@ -13,14 +13,14 @@ compatibility_flags = ["nodejs_compat"]
 # Secrets (never committed): wrangler secret put MODEL_API_KEY
 
 [vars]
-ALLOWED_ORIGIN = "*"   # tighten to https://unravix-lens.pages.dev (and later https://lens.unravix.tech)
+ALLOWED_ORIGIN = "https://unravix-lens.pages.dev"   # add https://lens.unravix.tech after the custom domain is attached
 DAILY_CAP = "15"       # live scans per IP per UTC day
 # SAM_RETRY_PROMPT = "equation"   # optional 2nd SAM phrase when < 2 lines found; off by default to save credits
 
-# Create with: wrangler kv namespace create LENS_KV  (then paste the id below)
+# KV namespace "unravix-lens-kv" (created 2026-10-26)
 [[kv_namespaces]]
 binding = "LENS_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "3d9781546103421e85b5262b0698162e"
 
 # Option B (single deploy, no Pages): let this Worker serve the UI too.
 # Uncomment and `wrangler deploy`; /api/* runs the Worker, everything else is served from public/.
