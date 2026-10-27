@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test --no-warnings \"worker/test/*.test.ts\" \"test/web/*.test.mjs\"",
+    "test": "node --test --no-warnings worker/test/*.test.ts test/web/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "proof": "node --no-warnings scripts/meta-proof.ts"
   },
