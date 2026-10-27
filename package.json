@@ -9,13 +9,14 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node --test --no-warnings \"worker/test/*.test.ts\" \"test/web/*.test.mjs\"",
+    "test": "node --test --loader=tsx --no-warnings worker/test/*.test.ts test/web/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "proof": "node --no-warnings scripts/meta-proof.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261026.1",
     "@types/node": "^22.20.5",
+    "tsx": "^4.19.0",
     "typescript": "^7.0.2",
     "wrangler": "^4.40.0"
   }
