@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker, { MAX_BODY_BYTES, validateImage, type Env } from "../src/index.ts";
+import worker, { MAX_BODY_BYTES, validateDoubt, validateImage, type Env } from "../src/index.ts";
 import type { KVLike } from "../src/budget.ts";
 
 class MemKV implements KVLike {
@@ -48,8 +48,8 @@ beforeEach(() => {
 afterEach(() => { globalThis.fetch = realFetch; });
 
 const mkEnv = (kv = new MemKV(), extra: Partial<Env> = {}) => ({ MODEL_API_KEY: "test", LENS_KV: kv, DAILY_CAP: "2", ...extra }) as unknown as Env;
-const post = (body: unknown, headers: Record<string, string> = { "Content-Type": "application/json" }) =>
-  new Request("https://x/api/analyze", { method: "POST", headers: { "CF-Connecting-IP": "9.9.9.9", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
+const post = (body: unknown, headers: Record<string, string> = { "Content-Type": "application/json" }, path = "/api/analyze") =>
+  new Request("https://x" + path, { method: "POST", headers: { "CF-Connecting-IP": "9.9.9.9", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 const errCode = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
 
 test("GET /api/health", async () => {
@@ -58,7 +58,7 @@ test("GET /api/health", async () => {
   const body = (await res.json()) as { ok: boolean; configured: boolean; version: string };
   assert.equal(body.ok, true);
   assert.equal(body.configured, false);
-  assert.match(body.version, /phase3a/);
+  assert.match(body.version, /^0\.4\.0/);
 });
 
 test("method, route and configuration errors use the JSON error shape", async () => {
@@ -175,4 +175,94 @@ test("analyze: two-column page with interleaved Spark numbering -> renumbered le
   assert.equal((byN.get(6) as any).status, "incorrect");
   assert.equal((byN.get(7) as any).status, "consequence");
   assert.equal((byN.get(6) as any).col, 1);
+});
+
+const doubtJson = {
+  subject: "Journal entries", category: "accounting", level: "Class 11", level_band: "secondary",
+  question: "How do I record goods bought on credit?", answer: "Purchases A/c Dr. To Creditor A/c",
+  steps: [{ title: "Find the accounts", detail: "Purchases and the supplier." }, { title: "Apply the rules", detail: "Debit expenses, credit the giver." }],
+  key_idea: "Every entry has an equal debit and credit.", misconception: "Debiting the supplier.",
+  check_questions: [{ q: "a", answer: "1" }, { q: "b", answer: "2" }, { q: "c", answer: "3" }], confidence: 0.9,
+};
+const postDoubt = (body: unknown) => post(body, { "Content-Type": "application/json" }, "/api/doubt");
+const useDoubtReply = () => { sparkBody = { choices: [{ message: { content: JSON.stringify(doubtJson) } }], usage: { prompt_tokens: 1000, completion_tokens: 1000 } }; };
+
+test("doubt: typed question -> one Spark call, no SAM, spend + cost returned", async () => {
+  useDoubtReply();
+  const kv = new MemKV();
+  const r = await worker.fetch(postDoubt({ text: "  How do I record   goods bought on credit?  " }), mkEnv(kv));
+  assert.equal(r.status, 200);
+  const body = (await r.json()) as any;
+  assert.equal(body.mode, "doubt");
+  assert.equal(body.doubt.category, "accounting");
+  assert.equal(body.doubt.steps.length, 2);
+  assert.deepEqual(body.input, { text: true, image: false });
+  assert.deepEqual(calls.map((u) => u.split("/").pop()), ["completions"], "text-only doubts skip SAM");
+  assert.ok(Math.abs(body.cost_usd - 0.0055) < 1e-6);
+  assert.ok(Math.abs(Number(kv.m.get("budget:total_usd")) - 0.0055) < 1e-6);
+  assert.equal(body.remaining_today, 1);
+});
+
+test("doubt: photo of a question (no text) is accepted and still skips SAM", async () => {
+  useDoubtReply();
+  const r = await worker.fetch(postDoubt({ image: JPEG }), mkEnv());
+  assert.equal(r.status, 200);
+  assert.deepEqual(((await r.json()) as any).input, { text: false, image: true });
+  assert.equal(calls.filter((u) => u.endsWith("/responses")).length, 0);
+});
+
+test("doubt: validation errors happen before any API call or cap use", async () => {
+  const kv = new MemKV();
+  const env = mkEnv(kv);
+  assert.equal(await errCode(await worker.fetch(postDoubt({}), env)), "empty_doubt");
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "   " }), env)), "empty_doubt");
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: 5 }), env)), "bad_request");
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "x".repeat(2001) }), env)), "doubt_too_long");
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "ok", image: "data:image/gif;base64,R0lGOD" }), env)), "invalid_image");
+  assert.equal(await errCode(await worker.fetch(postDoubt([1]), env)), "bad_request");
+  assert.equal((await worker.fetch(new Request("https://x/api/doubt"), env)).status, 405);
+  assert.deepEqual(calls, []);
+  assert.equal([...kv.m.keys()].filter((k) => k.startsWith("cap:")).length, 0);
+});
+
+test("doubt: shares the daily cap and the budget stop with analyze", async () => {
+  useDoubtReply();
+  const env = mkEnv();
+  assert.equal((await worker.fetch(postDoubt({ text: "q" }), env)).status, 200);
+  sparkBody = { choices: [{ message: { content: JSON.stringify(sparkAnalysis) } }], usage: {} };
+  assert.equal((await worker.fetch(post({ image: JPEG }), env)).status, 200);
+  useDoubtReply();
+  const r = await worker.fetch(postDoubt({ text: "q" }), env);
+  assert.equal(r.status, 429);
+  assert.equal(await errCode(r), "daily_limit");
+  const kv = new MemKV();
+  kv.m.set("budget:total_usd", "140");
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "q" }), mkEnv(kv))), "budget_exhausted");
+});
+
+test("doubt: Spark failure -> upstream_error; unparseable output still billed", async () => {
+  sparkStatus = 500;
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "q" }), mkEnv())), "upstream_error");
+  sparkStatus = 200;
+  sparkBody = { choices: [{ message: { content: "{\"steps\":[]}" } }], usage: { prompt_tokens: 1000, completion_tokens: 0 } };
+  const kv = new MemKV();
+  assert.equal(await errCode(await worker.fetch(postDoubt({ text: "q" }), mkEnv(kv))), "upstream_error");
+  assert.ok(Math.abs(Number(kv.m.get("budget:total_usd")) - 0.00125) < 1e-6);
+});
+
+test("validateDoubt keeps line breaks for code and working", () => {
+  const d = validateDoubt({ text: "for i in range(3):\r\n    print(i)\n\n\n\nwhat prints?" });
+  assert.ok(d.ok);
+  if (d.ok) assert.equal(d.text, "for i in range(3):\n print(i)\n\nwhat prints?");
+});
+
+test("analyze: an essay returns 200 not step-checkable (no knot, no no_steps error)", async () => {
+  sparkBody = { choices: [{ message: { content: JSON.stringify({ ...sparkAnalysis, checkable: false, not_checkable_reason: "Opinion essay.", steps: [], knot: null }) } }], usage: {} };
+  const r = await worker.fetch(post({ image: JPEG }), mkEnv());
+  assert.equal(r.status, 200);
+  const body = (await r.json()) as any;
+  assert.equal(body.analysis.checkable, false);
+  assert.equal(body.analysis.knot, null);
+  assert.equal(body.mode, "check");
+  assert.equal(typeof body.cost_usd, "number");
 });

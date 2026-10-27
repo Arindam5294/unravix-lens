@@ -1,7 +1,7 @@
 // Meta Model API client: SAM 3.1 (Responses API, SSE) and Muse Spark 1.3 (Chat Completions, JSON schema),
 // plus the merged Knot Scan pipeline used by /api/analyze.
-import { SAM_MODEL, SAM_PROMPT, SPARK_MODEL, SYSTEM_PROMPT, userPrompt } from "./prompt.ts";
-import { KNOT_SCHEMA, KNOT_SCHEMA_NAME, parseAnalysis, type KnotAnalysis } from "./schema.ts";
+import { DOUBT_SYSTEM_PROMPT, SAM_MODEL, SAM_PROMPT, SPARK_MODEL, SYSTEM_PROMPT, doubtPrompt, userPrompt } from "./prompt.ts";
+import { DOUBT_SCHEMA, DOUBT_SCHEMA_NAME, KNOT_SCHEMA, KNOT_SCHEMA_NAME, parseAnalysis, parseDoubt, type DoubtAnswer, type KnotAnalysis } from "./schema.ts";
 import { extractSseText, parseSamOutput } from "./sam.ts";
 import { mergeStepBoxes, normalizeSam, segmentationLabel, sortAndMergeRows, type NBox, type StepBox } from "./regions.ts";
 import { orderSteps } from "./order.ts";
@@ -61,21 +61,19 @@ export async function runSam(apiKey: string, imageDataUrl: string, prompt = SAM_
 
 export interface SparkResult { analysis: KnotAnalysis; costUsd: number; ms: number }
 
-export async function runSpark(apiKey: string, imageDataUrl: string, regions: NBox[], fetchImpl: FetchLike = fetch, size: ImageSize | null = dataUrlSize(imageDataUrl)): Promise<SparkResult> {
+type ChatContent = string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
+
+/** One Muse Spark structured-output call. Throws MetaApiError (with costUsd attached when billed). */
+async function sparkJson<T>(apiKey: string, system: string, user: ChatContent, schemaName: string, schema: unknown,
+  parse: (raw: string) => T, fetchImpl: FetchLike): Promise<{ value: T; costUsd: number; ms: number }> {
   const t0 = Date.now();
   const res = await fetchWithRetry(`${META_BASE}/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: SPARK_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: [
-          { type: "text", text: userPrompt(regions, size) },
-          { type: "image_url", image_url: { url: imageDataUrl } },
-        ] },
-      ],
-      response_format: { type: "json_schema", json_schema: { name: KNOT_SCHEMA_NAME, schema: KNOT_SCHEMA } },
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      response_format: { type: "json_schema", json_schema: { name: schemaName, schema } },
     }),
   }, 3, fetchImpl);
   if (!res.ok) throw new MetaApiError(res.status, `Muse Spark request failed (${res.status})`);
@@ -84,9 +82,40 @@ export async function runSpark(apiKey: string, imageDataUrl: string, regions: NB
   const content = body.choices?.[0]?.message?.content;
   if (!content) throw Object.assign(new MetaApiError(502, "Muse Spark returned no content"), { costUsd });
   try {
-    return { analysis: parseAnalysis(content), costUsd, ms: Date.now() - t0 };
+    return { value: parse(content), costUsd, ms: Date.now() - t0 };
   } catch (e) {
     throw Object.assign(new MetaApiError(502, (e as Error).message), { costUsd });
+  }
+}
+
+export async function runSpark(apiKey: string, imageDataUrl: string, regions: NBox[], fetchImpl: FetchLike = fetch, size: ImageSize | null = dataUrlSize(imageDataUrl)): Promise<SparkResult> {
+  const r = await sparkJson(apiKey, SYSTEM_PROMPT, [
+    { type: "text", text: userPrompt(regions, size) },
+    { type: "image_url", image_url: { url: imageDataUrl } },
+  ], KNOT_SCHEMA_NAME, KNOT_SCHEMA, parseAnalysis, fetchImpl);
+  return { analysis: r.value, costUsd: r.costUsd, ms: r.ms };
+}
+
+export interface DoubtResult { doubt: DoubtAnswer; costUsd: number; ms: number }
+
+/**
+ * "Ask a doubt": one Muse Spark call, no SAM (nothing to segment). Text, a photo of a question/passage, or both.
+ * onSpend is called with the billed cost even when parsing fails.
+ */
+export async function runDoubt(apiKey: string, text: string, imageDataUrl: string | null,
+  opts: { fetchImpl?: FetchLike; onSpend?: (usd: number) => void } = {}): Promise<DoubtResult> {
+  const prompt = doubtPrompt(text, Boolean(imageDataUrl));
+  const user: ChatContent = imageDataUrl
+    ? [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: imageDataUrl } }]
+    : prompt;
+  try {
+    const r = await sparkJson(apiKey, DOUBT_SYSTEM_PROMPT, user, DOUBT_SCHEMA_NAME, DOUBT_SCHEMA, parseDoubt, opts.fetchImpl ?? fetch);
+    opts.onSpend?.(r.costUsd);
+    return { doubt: r.value, costUsd: r.costUsd, ms: r.ms };
+  } catch (e) {
+    const c = (e as { costUsd?: number }).costUsd;
+    if (c) opts.onSpend?.(c);
+    throw e;
   }
 }
 

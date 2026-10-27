@@ -9,6 +9,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const API = (document.querySelector('meta[name="lens-api"]')?.content || window.LENS_API || "").replace(/\/$/, "");
 const SAMPLE_IMG = "samples/test-knot-step2.jpg";
 const SAMPLE_JSON = "samples/sample-result.json";
+const SAMPLE_DOUBT = "samples/sample-doubt.json";
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -23,6 +24,11 @@ const errCard = $("#err-card");
 let lastImage = null; // { dataUrl, url } of the last live photo, for "Try again"
 let runId = 0;
 let shownBoxes = []; // boxes currently drawn, for re-layout on resize
+let mode = "doubt"; // "doubt" (Ask a doubt) | "check" (Check my working)
+let attached = null; // { dataUrl, url } photo attached to a doubt
+let lastDoubt = null; // { text, img } of the last live doubt, for "Try again"
+const asked = $("#asked");
+const stage = $("#stage");
 
 /* ---------------- theme ---------------- */
 function initTheme() {
@@ -57,15 +63,60 @@ async function checkHealth() {
     const r = await fetch(`${API}/api/health`, { cache: "no-store" });
     const j = await r.json();
     if (j.ok && j.configured) { dot.className = "dot is-ok"; txt.textContent = "Live · Meta SAM 3.1 + Muse Spark"; }
-    else { dot.className = "dot is-bad"; txt.textContent = "Live scans offline · the sample still works"; }
+    else { dot.className = "dot is-bad"; txt.textContent = "Live answers offline · the samples still work"; }
   } catch {
-    dot.className = "dot is-bad"; txt.textContent = "Live scans offline · the sample still works";
+    dot.className = "dot is-bad"; txt.textContent = "Live answers offline · the samples still work";
   }
 }
 
 /* ---------------- state ---------------- */
 function setState(state) {
   panel.dataset.state = state;
+}
+
+const PROGRESS = {
+  check: ["Preparing photo", "Mapping lines with SAM 3.1", "Reading every step with Muse Spark", "Finding the knot"],
+  doubt: ["Reading your question", "Working out the subject and your level", "Building the explanation with Muse Spark", "Writing your check questions"],
+};
+function setProgressList(m) {
+  $("#progress").innerHTML = PROGRESS[m].map((t, i) => `<li data-step="${i}"><i></i><span>${esc(t)}</span></li>`).join("");
+}
+
+/* ---------------- mode toggle (accessible tabs) ---------------- */
+function setMode(next, { focusTab = false, scroll = false } = {}) {
+  if (next !== "doubt" && next !== "check") return;
+  const changed = next !== mode;
+  mode = next;
+  panel.dataset.mode = next;
+  panel.setAttribute("aria-labelledby", `tab-${next}`);
+  $$(".mode").forEach((t) => {
+    const on = t.dataset.mode === next;
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1;
+    if (on && focusTab) t.focus();
+  });
+  setProgressList(next);
+  if (changed && panel.dataset.state !== "idle") { runId++; setState("idle"); clearStage(); }
+  if (scroll) scrollToPanel();
+}
+
+function initModes() {
+  const tabs = $$(".mode");
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => setMode(t.dataset.mode));
+    t.addEventListener("keydown", (e) => {
+      const k = e.key;
+      let j = null;
+      if (k === "ArrowRight" || k === "ArrowDown") j = (i + 1) % tabs.length;
+      else if (k === "ArrowLeft" || k === "ArrowUp") j = (i - 1 + tabs.length) % tabs.length;
+      else if (k === "Home") j = 0;
+      else if (k === "End") j = tabs.length - 1;
+      if (j === null) return;
+      e.preventDefault();
+      setMode(tabs[j].dataset.mode, { focusTab: true });
+    });
+  });
+  setProgressList(mode);
 }
 
 function setProgress(step) {
@@ -95,6 +146,9 @@ function clearStage() {
   labels.innerHTML = "";
   cap.innerHTML = "";
   shownBoxes = [];
+  asked.hidden = true;
+  asked.textContent = "";
+  stage.classList.remove("is-textonly");
 }
 
 /* ---------------- overlay geometry ---------------- */
@@ -144,6 +198,7 @@ async function showPhoto(src) {
 
 /* ---------------- flows ---------------- */
 async function runSample() {
+  if (mode === "doubt") return runDoubtSample();
   const id = ++runId;
   setState("working");
   setProgress(0);
@@ -209,6 +264,161 @@ async function analyze(img, id = ++runId) {
   if (res.ok && body?.ok) return renderResult(body);
   const code = body?.error?.code || (res.status === 504 ? "timeout" : "network");
   renderError(code, body?.error?.message);
+}
+
+/* ---------------- Ask a doubt ---------------- */
+function showAsked(text, imgUrl) {
+  if (imgUrl) {
+    stage.classList.remove("is-textonly");
+  } else {
+    stage.classList.add("is-textonly");
+    photo.removeAttribute("src");
+  }
+  asked.hidden = !text;
+  asked.textContent = text || "";
+}
+
+async function runDoubtSample() {
+  const id = ++runId;
+  setState("working");
+  setProgress(0);
+  scrollToPanel();
+  clearStage();
+  const json = fetch(SAMPLE_DOUBT).then((r) => r.json());
+  let result;
+  try { result = await json; } catch { return renderError("network", "The sample could not load."); }
+  if (id !== runId) return;
+  showAsked(result.asked || "", null);
+  const beat = reduced() ? 150 : 600;
+  for (let s = 1; s <= 3; s++) { await sleep(beat); if (id !== runId) return; setProgress(s); }
+  await sleep(beat);
+  if (id !== runId) return;
+  renderDoubt({ ...result, sample: true });
+}
+
+async function attachFile(file) {
+  const box = $("#ask-box");
+  try {
+    const img = await prepareImage(file);
+    if (attached?.url) URL.revokeObjectURL(attached.url);
+    attached = img;
+    $("#ask-img").src = img.url;
+    $("#ask-thumb").hidden = false;
+    box.classList.remove("is-over");
+  } catch (e) {
+    setMode("doubt");
+    renderError("prep", e?.message || "Lens could not open that photo.");
+  }
+}
+
+function clearAttachment() {
+  if (attached?.url) URL.revokeObjectURL(attached.url);
+  attached = null;
+  $("#ask-img").removeAttribute("src");
+  $("#ask-thumb").hidden = true;
+}
+
+async function submitDoubt(text, img) {
+  text = (text || "").trim();
+  if (!text && !img) {
+    const ta = $("#ask-text");
+    ta.focus();
+    ta.setAttribute("aria-invalid", "true");
+    $("#ask-hint").textContent = "Type a question first, or add a photo of it.";
+    return;
+  }
+  $("#ask-text").removeAttribute("aria-invalid");
+  lastDoubt = { text, img };
+  const id = ++runId;
+  setState("working");
+  setProgress(0);
+  scrollToPanel();
+  clearStage();
+  if (img) await showPhoto(img.url);
+  showAsked(text, img?.url);
+  setProgress(1);
+  const t1 = setTimeout(() => id === runId && setProgress(2), 1800);
+  const t2 = setTimeout(() => id === runId && setProgress(3), 9000);
+  const ctl = new AbortController();
+  const timeout = setTimeout(() => ctl.abort(), 60_000);
+  let res, body;
+  try {
+    res = await fetch(`${API}/api/doubt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(img ? { text, image: img.dataUrl } : { text }),
+      signal: ctl.signal,
+    });
+    body = await res.json().catch(() => null);
+  } catch (e) {
+    body = null;
+    res = { ok: false, status: e?.name === "AbortError" ? 504 : 0 };
+  } finally {
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(timeout);
+  }
+  if (id !== runId) return;
+  if (res.ok && body?.ok) return renderDoubt({ ...body, asked: text });
+  const code = body?.error?.code || (res.status === 504 ? "timeout" : "network");
+  renderError(code, body?.error?.message);
+}
+
+const CATEGORY = {
+  maths: "Maths", physics: "Physics", chemistry: "Chemistry", biology: "Biology", statistics: "Statistics",
+  accounting: "Accounting", economics: "Economics", computer_science: "Computer science", language: "Language",
+  history: "History", geography: "Geography", social_science: "Social science", engineering: "Engineering",
+};
+/** Subject + level chips shared by both modes. */
+function detectChips(a) {
+  const cat = CATEGORY[a.category] || CATEGORY[a.subject] || "";
+  const topic = a.subject && !CATEGORY[a.subject] && a.subject.toLowerCase() !== cat.toLowerCase() ? a.subject : "";
+  return [
+    cat ? `<span class="chip chip--violet">${esc(cat)}</span>` : "",
+    topic ? `<span class="chip">${esc(topic)}</span>` : "",
+    a.level ? `<span class="chip chip--ok">${esc(a.level)}</span>` : "",
+  ].join("");
+}
+
+function questionsHtml(list, prefix = "qa") {
+  return (list || []).map((q, i) => `
+    <button class="q" type="button" aria-expanded="false" aria-controls="${prefix}-${i}">
+      <span class="q__q"><span>${i + 1}. ${esc(q.q)}</span><span class="q__hint">Tap to reveal</span></span>
+      <span class="q__a" id="${prefix}-${i}">${esc(q.answer)}</span>
+    </button>`).join("");
+}
+
+function wireCard() {
+  $$(".q", knotCard).forEach((b) => b.addEventListener("click", () => b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"))));
+  knotCard.classList.remove("reveal-in");
+  void knotCard.offsetWidth;
+  knotCard.classList.add("reveal-in");
+}
+
+function renderDoubt(result) {
+  const d = result.doubt || {};
+  const secs = result.timing?.total_ms ? `${(result.timing.total_ms / 1000).toFixed(1)} s` : "";
+  cap.innerHTML = [
+    result.sample ? `<span class="chip chip--violet">Sample · cached answer, no API call</span>` : "",
+    `<span class="chip">Muse Spark 1.3</span>`,
+    result.input?.image ? `<span class="chip">Photo read</span>` : `<span class="chip">Text only · no SAM call</span>`,
+    secs ? `<span class="chip">${secs}</span>` : "",
+  ].join("");
+  if (result.asked !== undefined && !asked.textContent && !photo.getAttribute("src")) showAsked(result.asked || d.question || "", null);
+  const qs = questionsHtml(d.check_questions, "dq");
+  const steps = (d.steps || []).map((s) => `<li>${s.title ? `<b>${esc(s.title)}</b>` : ""}${s.detail ? `<p>${esc(s.detail)}</p>` : ""}</li>`).join("");
+  const conf = Math.round((d.confidence || 0) * 100);
+  knotCard.innerHTML = `
+    <div class="knot__top"><span class="chip chip--ok">✓ Untangled</span>${detectChips(d)}</div>
+    <h3>${esc(d.question || "Here's how it works")}</h3>
+    ${d.answer ? `<div class="answer"><p class="knot__label">Answer</p><b>${esc(d.answer)}</b></div>` : ""}
+    <div><p class="knot__label">Step by step</p><ol class="explain">${steps}</ol></div>
+    ${d.key_idea ? `<p class="key"><svg class="i" aria-hidden="true"><use href="#i-bulb"/></svg><span><b>Key idea.</b> ${esc(d.key_idea)}</span></p>` : ""}
+    ${d.misconception ? `<div class="trap"><p class="knot__label">Watch out</p><p>${esc(d.misconception)}</p></div>` : ""}
+    ${qs ? `<div><p class="knot__label">Check yourself</p><div class="qs">${qs}</div></div>` : ""}
+    <div class="conf"><span>Confidence</span><span class="conf__bar"><span style="width:${conf}%"></span></span><span>${conf}%</span></div>
+    <div class="btns"><button class="btn" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Ask another</button><button class="btn btn--ghost" type="button" data-action="mode-check"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Check my working</button></div>`;
+  wireCard();
+  setProgress(4);
+  setState("result");
 }
 
 /* ---------------- result ---------------- */
@@ -292,9 +502,16 @@ function renderResult(result) {
       <span class="q__a" id="qa-${i}">${esc(q.answer)}</span>
     </button>`).join("");
   const actions = `<div class="btns"><button class="btn" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Scan another</button><a class="btn btn--ghost" href="#report">Knot Report</a></div>`;
-  const subject = a.subject && a.subject !== "other" ? `<span class="chip chip--violet">${esc(a.subject[0].toUpperCase() + a.subject.slice(1))}</span>` : "";
+  const subject = detectChips(a);
 
-  if (knot) {
+  if (a.checkable === false) {
+    knotCard.innerHTML = `
+      <div class="knot__top"><span class="chip chip--amber">Not step-checkable</span>${subject}</div>
+      <h3>There's no single right line of working here.</h3>
+      <div class="nc"><p>${esc(a.not_checkable_reason || "This looks like an essay or an opinion, so there is no one wrong step to find.")}</p><p>Lens can explain the topic instead, at your level.</p></div>
+      ${qs ? `<div><p class="knot__label">Think about</p><div class="qs">${qs}</div></div>` : ""}
+      <div class="btns"><button class="btn" type="button" data-action="explain-instead"${lastImage ? "" : " disabled"}><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Explain this instead</button><button class="btn btn--ghost" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Scan another</button></div>`;
+  } else if (knot) {
     const wrong = steps.find((s) => s.n === knot.step_n)?.transcription || "";
     knotCard.innerHTML = `
       <div class="knot__top"><span class="chip chip--knot">● Knotted at step ${knot.step_n}</span>${subject}</div>
@@ -315,10 +532,7 @@ function renderResult(result) {
       ${confRow}
       ${actions}`;
   }
-  knotCard.classList.remove("reveal-in");
-  void knotCard.offsetWidth;
-  knotCard.classList.add("reveal-in");
-  $$(".q", knotCard).forEach((b) => b.addEventListener("click", () => b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"))));
+  wireCard();
   $$(".steps li", knotCard).forEach((li) => {
     const go = () => focusStep(li.dataset.step);
     li.addEventListener("click", go);
@@ -334,10 +548,12 @@ function renderResult(result) {
 /* ---------------- errors ---------------- */
 const ERRORS = {
   budget_exhausted: { t: "Lens is resting", p: "The demo budget for this hackathon is used up, so live scans are paused. The sample still shows the full flow.", sample: true },
-  daily_limit: { t: "That's today's free scans", p: "Each device gets 15 live scans a day to keep Lens free for everyone. Come back tomorrow, or try the sample now.", sample: true },
+  daily_limit: { t: "That's today's free questions", p: "Each device gets 15 free questions and scans a day to keep Lens free for everyone. Come back tomorrow, or try a sample now.", sample: true },
+  empty_doubt: { t: "Nothing to explain yet", p: "Type a question or add a photo of it.", retake: true },
+  doubt_too_long: { t: "That question is very long", p: "Keep it under 2,000 characters, or photograph the page instead.", retake: true },
   no_steps: { t: "No steps found", p: "Lens could not find handwritten working in this photo.", tips: ["One solution per photo, filling most of the frame", "Bright, even light with no strong shadows", "Dark pen or pencil on plain or ruled paper"], retake: true },
   upstream_busy: { t: "Lens is busy", p: "Lots of people are scanning right now. Try again in a minute.", retry: true },
-  upstream_error: { t: "Lens couldn't read this one", p: "Something went wrong while reading the photo. Try again, or take a clearer photo.", retry: true, retake: true },
+  upstream_error: { t: "Lens couldn't untangle this one", p: "Something went wrong while reading it. Try again, or rephrase the question or take a clearer photo.", retry: true, retake: true },
   timeout: { t: "That took too long", p: "The scan did not finish in time. Check your connection and try again.", retry: true },
   network: { t: "Can't reach Lens", p: "Live scans are offline or your connection dropped. The sample works without a connection to the API.", retry: true, sample: true },
   not_configured: { t: "Live scans are offline", p: "Lens is not connected right now. The sample still shows the full flow.", sample: true },
@@ -347,12 +563,14 @@ const ERRORS = {
   payload_too_large: { t: "That photo is too large", p: "", retake: true },
 };
 
+const canRetry = () => (mode === "doubt" ? Boolean(lastDoubt) : Boolean(lastImage));
+
 function renderError(code, message) {
   const e = ERRORS[code] || ERRORS.upstream_error;
-  const p = message && (!e.p || code === "prep" || code.includes("image") || code.includes("payload")) ? message : e.p;
+  const p = message && (!e.p || code === "prep" || code.includes("image") || code.includes("payload") || code.includes("doubt")) ? message : e.p;
   const btns = [
-    e.retry && lastImage ? `<button class="btn" type="button" data-action="retry"><svg class="i" aria-hidden="true"><use href="#i-redo"/></svg>Try again</button>` : "",
-    e.retake ? `<button class="btn${e.retry && lastImage ? " btn--ghost" : ""}" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>New photo</button>` : "",
+    e.retry && canRetry() ? `<button class="btn" type="button" data-action="retry"><svg class="i" aria-hidden="true"><use href="#i-redo"/></svg>Try again</button>` : "",
+    e.retake ? `<button class="btn${e.retry && canRetry() ? " btn--ghost" : ""}" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-${mode === "doubt" ? "chat" : "camera"}"/></svg>${mode === "doubt" ? "Edit question" : "New photo"}</button>` : "",
     e.sample ? `<button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Try the sample</button>` : "",
   ].join("");
   errCard.innerHTML = `
@@ -407,28 +625,52 @@ function initInputs() {
   }
   const zone = $("#dropzone");
   const over = (on) => (e) => { e.preventDefault(); zone.classList.toggle("is-over", on); };
-  ["dragenter", "dragover"].forEach((t) => panel.addEventListener(t, (e) => { if (panel.dataset.state === "idle") over(true)(e); else e.preventDefault(); }));
-  ["dragleave", "dragend"].forEach((t) => panel.addEventListener(t, over(false)));
+  const askBox = $("#ask-box");
+  const overAny = (on) => (e) => { e.preventDefault(); (mode === "doubt" ? askBox : zone).classList.toggle("is-over", on); };
+  ["dragenter", "dragover"].forEach((t) => panel.addEventListener(t, (e) => { if (panel.dataset.state === "idle") overAny(true)(e); else e.preventDefault(); }));
+  ["dragleave", "dragend"].forEach((t) => panel.addEventListener(t, overAny(false)));
   panel.addEventListener("drop", (e) => {
-    over(false)(e);
+    overAny(false)(e);
     const f = [...(e.dataTransfer?.files || [])].find((f) => /^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name));
-    if (f) runFile(f);
+    if (!f) return;
+    if (mode === "doubt") attachFile(f); else runFile(f);
   });
   window.addEventListener("paste", (e) => {
     const f = [...(e.clipboardData?.files || [])].find((f) => /^image\//.test(f.type));
-    if (f) runFile(f);
+    if (!f) return;
+    if (mode === "doubt") { if (panel.dataset.state === "idle") attachFile(f); } else runFile(f);
   });
+
+  // Ask a doubt form
+  const ta = $("#ask-text");
+  const count = () => { const n = ta.value.length; const c = $("#ask-count"); c.textContent = `${n} / 2000`; c.classList.toggle("is-near", n > 1800); };
+  ta.addEventListener("input", () => { count(); ta.removeAttribute("aria-invalid"); });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $("#ask").requestSubmit(); } });
+  $("#ask").addEventListener("submit", (e) => { e.preventDefault(); submitDoubt(ta.value, attached); });
+  $("#ask-file").addEventListener("change", (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) attachFile(f); });
+  $("#ask-rm").addEventListener("click", clearAttachment);
+  $$(".ex").forEach((b) => b.addEventListener("click", () => { ta.value = b.dataset.ex; count(); ta.focus(); }));
+  count();
 
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-action]");
     if (!el) return;
     const act = el.dataset.action;
     if (act === "sample") runSample();
-    else if (act === "scan") {
+    else if (act === "mode-doubt" || act === "mode-check") {
+      setMode(act === "mode-doubt" ? "doubt" : "check", { scroll: true });
+      if (panel.dataset.state !== "idle") { runId++; setState("idle"); clearStage(); }
+      if (mode === "doubt") setTimeout(() => $("#ask-text").focus({ preventScroll: true }), reduced() ? 0 : 450);
+    } else if (act === "scan") {
+      setMode("check");
       const touch = matchMedia("(hover: none), (pointer: coarse)").matches;
       if (touch) pickFile(true); else { setState("idle"); scrollToPanel(); }
-    } else if (act === "again") { runId++; setState("idle"); clearStage(); scrollToPanel(); }
-    else if (act === "retry" && lastImage) analyze(lastImage);
+    } else if (act === "again") { runId++; setState("idle"); clearStage(); scrollToPanel(); if (mode === "doubt") $("#ask-text").focus({ preventScroll: true }); }
+    else if (act === "retry") { if (mode === "doubt" && lastDoubt) submitDoubt(lastDoubt.text, lastDoubt.img); else if (lastImage) analyze(lastImage); }
+    else if (act === "explain-instead" && lastImage) {
+      setMode("doubt");
+      submitDoubt("This is my written work. It has no single right answer, so please explain the topic and how to write a strong answer.", lastImage);
+    }
   });
 
   $("#clear-report").addEventListener("click", () => {
@@ -439,9 +681,19 @@ function initInputs() {
 /* ---------------- demo hooks (screenshots / judging): ?state=scanning|result|error&code=... ---------------- */
 async function demoHooks() {
   const q = new URLSearchParams(location.search);
+  if (q.get("mode")) setMode(q.get("mode"));
   const st = q.get("state");
-  if (!st) return;
-  if (st === "scanning") {
+  if (!st) { if (q.has("scroll")) panel.scrollIntoView({ block: "start" }); return; }
+  if (mode === "doubt" && (st === "scanning" || st === "result")) {
+    const r = await fetch(SAMPLE_DOUBT).then((x) => x.json());
+    showAsked(r.asked || "", null);
+    if (st === "scanning") { runId++; setState("working"); setProgress(2); }
+    else renderDoubt({ ...r, sample: true });
+  } else if (st === "nc") {
+    await showPhoto(SAMPLE_IMG);
+    const r = await fetch(SAMPLE_JSON).then((x) => x.json());
+    renderResult({ ...r, sample: true, demo: true, boxes: (r.boxes || []).map((b) => ({ ...b, status: "unclear" })), analysis: { ...r.analysis, steps: (r.analysis.steps || []).map((x) => ({ ...x, status: "unclear" })), checkable: false, knot: null, not_checkable_reason: "This is an opinion paragraph, so there is no single right line of reasoning to check.", category: "language", subject: "Opinion writing", level: "Class 9" } });
+  } else if (st === "scanning") {
     runId++;
     setState("working");
     await showPhoto(SAMPLE_IMG);
@@ -467,6 +719,7 @@ function initLayout() {
 }
 
 initTheme();
+initModes();
 initLayout();
 initReveal();
 initInputs();

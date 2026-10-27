@@ -1,4 +1,4 @@
-# Headless screenshots of the UI states (hero, scanning, result, error) at 390x844 and 1440x900.
+# Headless screenshots of the UI states (hero, both modes: Ask a doubt + Check my working) at 390x844 and 1440x900.
 # pip install playwright && python -m playwright install chromium
 # Run: PORT=8765 OUT=screens python3 scripts/screens.py [shot-name ...]
 # Serves public/ locally, mocks /api/health, proxies Google Fonts, blocks everything else.
@@ -20,7 +20,7 @@ threading.Thread(target=srv.serve_forever,daemon=True).start()
 async def route(r):
     u=r.request.url
     if u.startswith(f'http://127.0.0.1:{PORT}/api/health'):
-        return await r.fulfill(status=200,content_type='application/json',body='{"ok":true,"configured":true,"version":"0.2.0-phase2a"}')
+        return await r.fulfill(status=200,content_type='application/json',body='{"ok":true,"configured":true,"version":"0.4.0-doubt"}')
     if u.startswith(f'http://127.0.0.1:{PORT}'):
         return await r.continue_()
     if 'fonts.g' in u:
@@ -53,13 +53,20 @@ async def main():
         plan=[
           ('hero-390',390,844,'',False,None,2600,True,None),
           ('hero-1440',1440,900,'',False,None,2600,False,None),
-          ('scanning-390',390,844,'?state=scanning',False,None,1500,True,'#scan'),
-          ('scanning-1440',1440,900,'?state=scanning',False,None,1500,False,'#scan'),
-          ('result-390',390,844,'?state=result',False,None,3200,True,'#scan'),
-          ('result-390-full',390,844,'?state=result',True,None,3200,True,None),
-          ('result-1440',1440,900,'?state=result',False,None,3200,False,'#scan'),
-          ('result-1440-light',1440,900,'?state=result',False,'light',3200,False,'#scan'),
-          ('error-390',390,844,'?state=error&code=daily_limit',False,None,1500,True,'#scan'),
+          ('doubt-idle-390',390,844,'?mode=doubt',False,None,1800,True,'#scan'),
+          ('doubt-idle-1440',1440,900,'?mode=doubt',False,None,1800,False,'#scan'),
+          ('doubt-scanning-390',390,844,'?mode=doubt&state=scanning',False,None,1500,True,'#scan'),
+          ('doubt-result-390',390,844,'?mode=doubt&state=result',False,None,3000,True,'#scan'),
+          ('doubt-result-390-full',390,844,'?mode=doubt&state=result',True,None,3000,True,None),
+          ('doubt-result-1440',1440,900,'?mode=doubt&state=result',False,None,3000,False,'#scan'),
+          ('doubt-result-1440-light',1440,900,'?mode=doubt&state=result',False,'light',3000,False,'#scan'),
+          ('check-idle-390',390,844,'?mode=check',False,None,1800,True,'#scan'),
+          ('check-idle-1440',1440,900,'?mode=check',False,None,1800,False,'#scan'),
+          ('check-scanning-390',390,844,'?mode=check&state=scanning',False,None,1500,True,'#scan'),
+          ('check-result-390',390,844,'?mode=check&state=result',False,None,3200,True,'#scan'),
+          ('check-result-1440',1440,900,'?mode=check&state=result',False,None,3200,False,'#scan'),
+          ('check-notcheckable-1440',1440,900,'?mode=check&state=nc',False,None,3200,False,'#scan'),
+          ('error-390',390,844,'?mode=doubt&state=error&code=daily_limit',False,None,1500,True,'#scan'),
           ('idle-1440-full',1440,900,'',True,None,2600,False,None),
         ]
         for a in plan:

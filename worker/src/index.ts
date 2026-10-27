@@ -1,11 +1,14 @@
 // Unravix Lens API Worker (Swanix Labs).
 // Routes:
 //   GET  /api/health
-//   POST /api/analyze   Content-Type: application/json   { "image": "data:image/jpeg;base64,..." }
+//   POST /api/analyze   Content-Type: application/json   { "image": "data:image/jpeg;base64,..." }     ("Check my working")
+//   POST /api/doubt     Content-Type: application/json   { "text"?: "...", "image"?: "data:image/..." }  ("Ask a doubt", no SAM)
+// Both share the budget guard ($100 warn, $140 hard stop) and the per-IP daily cap.
 // Errors always look like: { "ok": false, "error": { "code": "...", "message": "..." } }
 import { BudgetGuard, type KVLike } from "./budget.ts";
 import { DEFAULT_DAILY_CAP, takeDailySlot } from "./ratelimit.ts";
-import { MetaApiError, analyzeImage } from "./meta.ts";
+import { MetaApiError, analyzeImage, runDoubt } from "./meta.ts";
+import { MAX_DOUBT_CHARS } from "./prompt.ts";
 
 export interface Env {
   MODEL_API_KEY: string;          // Worker secret: `wrangler secret put MODEL_API_KEY`
@@ -15,7 +18,7 @@ export interface Env {
   SAM_RETRY_PROMPT?: string;      // optional second SAM phrase when < 2 lines found (off by default)
 }
 
-export const VERSION = "0.3.0-phase3a";
+export const VERSION = "0.4.0-doubt";
 /** Decoded image bytes. The client resizes to <= 1600 px JPEG, typically 150-600 KB. */
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Raw request body cap: base64 inflates by 4/3, plus JSON overhead. */
@@ -24,7 +27,7 @@ export const MAX_BODY_BYTES = Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 4096;
 export type ErrorCode =
   | "bad_request" | "unsupported_media_type" | "payload_too_large" | "invalid_image" | "image_too_large"
   | "method_not_allowed" | "not_found" | "not_configured"
-  | "budget_exhausted" | "daily_limit" | "no_steps" | "upstream_busy" | "upstream_error";
+  | "budget_exhausted" | "daily_limit" | "no_steps" | "empty_doubt" | "doubt_too_long" | "upstream_busy" | "upstream_error";
 
 function cors(env: Env): Record<string, string> {
   return {
@@ -79,67 +82,140 @@ export function validateImage(image: unknown): ImageCheck {
   return { ok: true, mime: m[1], bytes };
 }
 
-async function analyze(req: Request, env: Env): Promise<Response> {
-  if (!env.MODEL_API_KEY || !env.LENS_KV) return fail(env, 503, "not_configured", "Lens is not configured yet.");
+type Guarded = { ok: true; body: Record<string, unknown>; kv: KVLike; budget: BudgetGuard; level: string; cap: { limit: number; used: number } } | { ok: false; res: Response };
 
+/** Shared front door for billed routes: config, JSON body, then (after the route's own validation) budget + daily cap. */
+async function readJson(req: Request, env: Env): Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; res: Response }> {
+  if (!env.MODEL_API_KEY || !env.LENS_KV) return { ok: false, res: fail(env, 503, "not_configured", "Lens is not configured yet.") };
   const ctype = (req.headers.get("Content-Type") || "").toLowerCase();
-  if (!ctype.startsWith("application/json")) return fail(env, 415, "unsupported_media_type", "Send JSON: Content-Type: application/json.");
+  if (!ctype.startsWith("application/json")) return { ok: false, res: fail(env, 415, "unsupported_media_type", "Send JSON: Content-Type: application/json.") };
   const len = Number(req.headers.get("Content-Length"));
-  if (Number.isFinite(len) && len > MAX_BODY_BYTES) return fail(env, 413, "payload_too_large", "The photo is too large. Lens accepts up to 4 MB.");
-
+  if (Number.isFinite(len) && len > MAX_BODY_BYTES) return { ok: false, res: fail(env, 413, "payload_too_large", "The photo is too large. Lens accepts up to 4 MB.") };
   let raw: string;
-  try { raw = await req.text(); } catch { return fail(env, 400, "bad_request", "Could not read the request."); }
-  if (raw.length > MAX_BODY_BYTES) return fail(env, 413, "payload_too_large", "The photo is too large. Lens accepts up to 4 MB.");
-  let body: { image?: unknown };
-  try { body = JSON.parse(raw); } catch { return fail(env, 400, "bad_request", "The request body is not valid JSON."); }
-  const v = validateImage(body?.image);
-  if (!v.ok) return fail(env, v.code === "image_too_large" ? 413 : 400, v.code, v.error);
-  const image = body.image as string;
+  try { raw = await req.text(); } catch { return { ok: false, res: fail(env, 400, "bad_request", "Could not read the request.") }; }
+  if (raw.length > MAX_BODY_BYTES) return { ok: false, res: fail(env, 413, "payload_too_large", "The photo is too large. Lens accepts up to 4 MB.") };
+  let body: unknown;
+  try { body = JSON.parse(raw); } catch { return { ok: false, res: fail(env, 400, "bad_request", "The request body is not valid JSON.") }; }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, res: fail(env, 400, "bad_request", "The request body must be a JSON object.") };
+  return { ok: true, body: body as Record<string, unknown> };
+}
 
+async function guard(req: Request, env: Env, body: Record<string, unknown>): Promise<Guarded> {
   const kv = env.LENS_KV as unknown as KVLike;
   const budget = new BudgetGuard(kv);
   const b = await budget.check();
-  if (!b.allowed) return fail(env, 503, "budget_exhausted", "Lens is resting: the demo budget for this hackathon is used up.");
-
+  if (!b.allowed) return { ok: false, res: fail(env, 503, "budget_exhausted", "Lens is resting: the demo budget for this hackathon is used up.") };
   const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
   const cap = await takeDailySlot(kv, ip, Number(env.DAILY_CAP) || DEFAULT_DAILY_CAP);
   if (!cap.allowed) {
-    return fail(env, 429, "daily_limit", `You have used today's ${cap.limit} free scans. Come back tomorrow.`, { limit: cap.limit }, { "Retry-After": "3600" });
+    return { ok: false, res: fail(env, 429, "daily_limit", `You have used today's ${cap.limit} free questions and scans. Come back tomorrow.`, { limit: cap.limit }, { "Retry-After": "3600" }) };
   }
+  return { ok: true, body, kv, budget, level: b.level, cap };
+}
+
+const usd = (v: number) => Math.round(v * 10000) / 10000;
+
+function upstreamFail(env: Env, err: unknown, what: string): Response {
+  if (err instanceof MetaApiError && err.status === 429) return fail(env, 503, "upstream_busy", "Lens is busy right now. Try again in a minute.", {}, { "Retry-After": "30" });
+  console.error(`${what} failed`, err instanceof Error ? err.message : String(err));
+  return fail(env, 502, "upstream_error", what === "doubt" ? "Lens could not answer this one. Try again, or rephrase the question." : "Lens could not read this photo. Try again, or take a clearer photo.");
+}
+
+async function analyze(req: Request, env: Env): Promise<Response> {
+  const r = await readJson(req, env);
+  if (!r.ok) return r.res;
+  const v = validateImage(r.body.image);
+  if (!v.ok) return fail(env, v.code === "image_too_large" ? 413 : 400, v.code, v.error);
+  const image = r.body.image as string;
+  const g = await guard(req, env, r.body);
+  if (!g.ok) return g.res;
 
   const t0 = Date.now();
   let spent = 0;
   try {
-    const r = await analyzeImage(env.MODEL_API_KEY, image, {
+    const res = await analyzeImage(env.MODEL_API_KEY, image, {
       samRetryPrompt: env.SAM_RETRY_PROMPT || undefined,
-      onSpend: (usd) => { spent += usd; },
+      onSpend: (u) => { spent += u; },
     });
-    if (r.analysis.steps.length === 0) {
-      return fail(env, 422, "no_steps", "Lens could not find any handwritten steps. Try a sharper, closer photo of one solution.");
+    if (res.analysis.steps.length === 0 && res.analysis.checkable) {
+      return fail(env, 422, "no_steps", "Lens could not find any written steps. Try a sharper, closer photo of one solution.");
     }
     return json(env, 200, {
       ok: true,
+      mode: "check",
       version: VERSION,
-      segmentation: r.segmentation,
-      boxes: r.boxes,
-      order: r.order,
-      columns: r.columns,
-      image: r.image,
-      analysis: r.analysis,
-      timing: { total_ms: Date.now() - t0, sam_ms: r.sam.ms, spark_ms: r.spark.ms },
-      sam: { boxes: r.sam.boxes, calls: r.sam.calls },
-      remaining_today: Math.max(0, cap.limit - cap.used),
-      budget_level: b.level,
+      segmentation: res.segmentation,
+      boxes: res.boxes,
+      order: res.order,
+      columns: res.columns,
+      image: res.image,
+      analysis: res.analysis,
+      timing: { total_ms: Date.now() - t0, sam_ms: res.sam.ms, spark_ms: res.spark.ms },
+      sam: { boxes: res.sam.boxes, calls: res.sam.calls },
+      cost_usd: usd(spent),
+      remaining_today: Math.max(0, g.cap.limit - g.cap.used),
+      budget_level: g.level,
     });
   } catch (err) {
-    if (err instanceof MetaApiError && err.status === 429) return fail(env, 503, "upstream_busy", "Lens is busy right now. Try again in a minute.", {}, { "Retry-After": "30" });
-    console.error("analyze failed", err instanceof Error ? err.message : String(err));
-    return fail(env, 502, "upstream_error", "Lens could not read this photo. Try again, or take a clearer photo.");
+    return upstreamFail(env, err, "analyze");
   } finally {
-    if (spent > 0) {
-      const rec = await budget.record(spent);
-      if (rec.crossedWarn) console.warn(`budget warning: total $${rec.total.toFixed(2)}`); // Telegram alert in Phase 5
-    }
+    await settle(g.budget, spent);
+  }
+}
+
+async function settle(budget: BudgetGuard, spent: number) {
+  if (spent > 0) {
+    const rec = await budget.record(spent);
+    if (rec.crossedWarn) console.warn(`budget warning: total $${rec.total.toFixed(2)}`); // Telegram alert in Phase 5
+  }
+}
+
+export type DoubtCheck = { ok: true; text: string; image: string | null } | { ok: false; status: number; code: ErrorCode; error: string };
+
+/** Validate an "Ask a doubt" body: typed text (<= 2000 chars), an optional photo, at least one of the two. */
+export function validateDoubt(body: Record<string, unknown>): DoubtCheck {
+  const t = body.text;
+  if (t !== undefined && t !== null && typeof t !== "string") return { ok: false, status: 400, code: "bad_request", error: "\"text\" must be a string." };
+  // Collapse runs of blank space; keep line breaks (code and working need them).
+  const text = typeof t === "string" ? t.replace(/\r\n?/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim() : "";
+  if (text.length > MAX_DOUBT_CHARS) return { ok: false, status: 413, code: "doubt_too_long", error: `Keep the question under ${MAX_DOUBT_CHARS} characters.` };
+  let image: string | null = null;
+  if (body.image !== undefined && body.image !== null && body.image !== "") {
+    const v = validateImage(body.image);
+    if (!v.ok) return { ok: false, status: v.code === "image_too_large" ? 413 : 400, code: v.code, error: v.error };
+    image = body.image as string;
+  }
+  if (!text && !image) return { ok: false, status: 400, code: "empty_doubt", error: "Type a question or add a photo of it." };
+  return { ok: true, text, image };
+}
+
+async function doubt(req: Request, env: Env): Promise<Response> {
+  const r = await readJson(req, env);
+  if (!r.ok) return r.res;
+  const d = validateDoubt(r.body);
+  if (!d.ok) return fail(env, d.status, d.code, d.error);
+  const g = await guard(req, env, r.body);
+  if (!g.ok) return g.res;
+
+  const t0 = Date.now();
+  let spent = 0;
+  try {
+    const res = await runDoubt(env.MODEL_API_KEY, d.text, d.image, { onSpend: (u) => { spent += u; } });
+    return json(env, 200, {
+      ok: true,
+      mode: "doubt",
+      version: VERSION,
+      input: { text: d.text.length > 0, image: Boolean(d.image) },
+      doubt: res.doubt,
+      timing: { total_ms: Date.now() - t0, spark_ms: res.ms },
+      cost_usd: usd(spent),
+      remaining_today: Math.max(0, g.cap.limit - g.cap.used),
+      budget_level: g.level,
+    });
+  } catch (err) {
+    return upstreamFail(env, err, "doubt");
+  } finally {
+    await settle(g.budget, spent);
   }
 }
 
@@ -154,6 +230,10 @@ export default {
     if (url.pathname === "/api/analyze") {
       if (req.method !== "POST") return fail(env, 405, "method_not_allowed", "Use POST.", {}, { Allow: "POST, OPTIONS" });
       return analyze(req, env);
+    }
+    if (url.pathname === "/api/doubt") {
+      if (req.method !== "POST") return fail(env, 405, "method_not_allowed", "Use POST.", {}, { Allow: "POST, OPTIONS" });
+      return doubt(req, env);
     }
     return fail(env, 404, "not_found", "Not found.");
   },
