@@ -94,6 +94,9 @@ So $100 of credits covers roughly 2,500 real-photo scans, or 8,000 doubts.
   - SAM 3.1 returns no line boxes on most lined-notebook photos, so localisation there relies on Spark plus the on-device snap.
   - Boxes on stacked fractions and matrices can be thinner than the line.
 
+## For judges
+If the public daily limit is used up, open https://unravix-lens.pages.dev, tap **Judges: access code** at the bottom of the page and paste the code from the submission form. It unlocks a separate daily allowance just for judges. The code is stored only in your browser and is never in this repo.
+
 ## Try it without spending credits
 - In **Ask a doubt**, press **See a sample answer**: a cached live Muse Spark answer (`public/samples/sample-doubt.json`).
 - In **Check my working**, press **Try a sample**: the full flow on `public/samples/test-knot-step2.jpg` with a cached real SAM 3.1 + Muse Spark result.
