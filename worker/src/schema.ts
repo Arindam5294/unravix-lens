@@ -37,11 +37,29 @@ const QUESTIONS = {
 
 export const KNOT_SCHEMA_NAME = "knot_analysis";
 
+/** Edge of the image the tops of the letters point to. */
+export const PAGE_UP = ["top", "right", "bottom", "left"] as const;
+export type PageUp = (typeof PAGE_UP)[number];
+
+/** Clockwise turn (degrees) that makes a page upright, given where the tops of its letters point. */
+export function rotationFor(up: PageUp): 0 | 90 | 180 | 270 {
+  return up === "right" ? 270 : up === "bottom" ? 180 : up === "left" ? 90 : 0;
+}
+
+/** "Rescan to verify" verdict on the knot from the previous scan. */
+export const PREVIOUS_KNOT = ["none", "fixed", "still_there", "not_visible"] as const;
+export type PreviousKnot = (typeof PREVIOUS_KNOT)[number];
+
 export const KNOT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["subject", "category", "level", "level_band", "checkable", "not_checkable_reason", "steps", "knot", "check_questions", "knot_report", "confidence"],
+  required: ["page_up", "language", "subject", "category", "level", "level_band", "checkable", "not_checkable_reason", "steps", "knot", "check_questions", "knot_report", "previous_knot", "confidence"],
   properties: {
+    // Which edge of the image the tops of the letters point to. "top" = upright. Anything else means the
+    // photo is sideways or upside down; the app then offers "Rotate and scan again" (0.5.0 safety net).
+    page_up: { type: "string", enum: PAGE_UP },
+    // BCP-47 code of the language the explanation is written in (0.6 multilingual).
+    language: { type: "string" },
     ...DETECT_PROPS,
     // false for open essays, opinion pieces or anything without one right line of reasoning.
     checkable: { type: "boolean" },
@@ -65,26 +83,32 @@ export const KNOT_SCHEMA = {
     knot: {
       type: ["object", "null"],
       additionalProperties: false,
-      required: ["step_n", "what_is_wrong", "misconception", "explanation", "corrected_step"],
+      required: ["step_n", "what_is_wrong", "misconception", "explanation", "corrected_step", "hints"],
       properties: {
         step_n: { type: "integer" },
         what_is_wrong: { type: "string" },
         misconception: { type: "string" },
         explanation: { type: "string" },
         corrected_step: { type: "string" },
+        // 3 escalating hints (where to look -> which rule -> almost the fix), same call (0.6 hint ladder).
+        hints: { type: "array", items: { type: "string" } },
       },
     },
     check_questions: QUESTIONS,
     knot_report: {
       type: "object",
       additionalProperties: false,
-      required: ["error_type", "topic", "tip"],
+      required: ["error_type", "topic", "concept_en", "tip"],
       properties: {
         error_type: { type: "string" },
         topic: { type: "string" },
+        // The concept in 1-4 lowercase English words, whatever the answer language (Knot profile grouping).
+        concept_en: { type: "string" },
         tip: { type: "string" },
       },
     },
+    // "Rescan to verify": was the previous knot untied? "none" on a normal scan.
+    previous_knot: { type: "string", enum: PREVIOUS_KNOT },
     confidence: { type: "number" },
   },
 } as const;
@@ -94,8 +118,9 @@ export const DOUBT_SCHEMA_NAME = "doubt_answer";
 export const DOUBT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["subject", "category", "level", "level_band", "question", "answer", "steps", "key_idea", "misconception", "check_questions", "confidence"],
+  required: ["language", "subject", "category", "level", "level_band", "question", "answer", "steps", "key_idea", "misconception", "check_questions", "confidence"],
   properties: {
+    language: { type: "string" },
     ...DETECT_PROPS,
     // The doubt restated in one clear line (what Lens understood).
     question: { type: "string" },
@@ -127,6 +152,11 @@ export interface Detected {
 }
 
 export interface KnotAnalysis extends Detected {
+  /** Where the tops of the letters point; "top" when the photo is upright (or the field is missing). */
+  page_up: PageUp;
+  /** BCP-47 code of the explanation language ("" when the model did not say). */
+  language: string;
+  previous_knot: PreviousKnot;
   checkable: boolean;
   not_checkable_reason: string;
   steps: { n: number; box_id: number | null; bbox: number[]; transcription: string; status: StepStatus; spark_n?: number }[];
@@ -136,13 +166,15 @@ export interface KnotAnalysis extends Detected {
     misconception: string;
     explanation: string;
     corrected_step: string;
+    hints: string[];
   } | null;
   check_questions: { q: string; answer: string }[];
-  knot_report: { error_type: string; topic: string; tip: string };
+  knot_report: { error_type: string; topic: string; concept_en: string; tip: string };
   confidence: number;
 }
 
 export interface DoubtAnswer extends Detected {
+  language: string;
   question: string;
   answer: string;
   steps: { title: string; detail: string }[];
@@ -206,6 +238,22 @@ function parseQuestions(v: unknown): { q: string; answer: string }[] {
     .slice(0, 3);
 }
 
+/** Up to 3 non-empty hints, each capped (the hint ladder shows them one at a time). */
+export function parseHints(v: unknown): string[] {
+  return (Array.isArray(v) ? v : []).map((h) => str(h, 400)).filter(Boolean).slice(0, 3);
+}
+
+/** A BCP-47-looking code ("hi", "zh-Hant"), else "". */
+export function parseLangCode(v: unknown): string {
+  const t = str(v, 24);
+  return /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$/.test(t) ? t : "";
+}
+
+/** Grouping key for the Knot profile: lowercase English words only ("Expanding Brackets." -> "expanding brackets"). */
+export function conceptKey(t: string): string {
+  return t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+}
+
 function toJson(raw: string | unknown): unknown {
   if (typeof raw !== "string") return raw;
   try { return JSON.parse(raw); } catch { throw new AnalysisParseError("model output is not JSON"); }
@@ -247,6 +295,7 @@ export function parseAnalysis(raw: string | unknown): KnotAnalysis {
         misconception: str(k.misconception),
         explanation: str(k.explanation, 1200),
         corrected_step: str(k.corrected_step, 300),
+        hints: parseHints(k.hints),
       };
       // The knot step is the incorrect one, whatever the per-step label said.
       for (const s of steps) if (s.n === step_n) s.status = "incorrect";
@@ -258,14 +307,18 @@ export function parseAnalysis(raw: string | unknown): KnotAnalysis {
   }
 
   const r = isObj(j.knot_report) ? j.knot_report : {};
+  const up = str(j.page_up, 10).toLowerCase();
   return {
+    page_up: (PAGE_UP as readonly string[]).includes(up) ? (up as PageUp) : "top",
+    language: parseLangCode(j.language),
+    previous_knot: (PREVIOUS_KNOT as readonly string[]).includes(str(j.previous_knot, 20)) ? (str(j.previous_knot, 20) as PreviousKnot) : "none",
     ...parseDetected(j),
     checkable,
     not_checkable_reason: checkable ? "" : str(j.not_checkable_reason, 400) || "This work has no single right line of reasoning to check.",
     steps,
     knot,
     check_questions: parseQuestions(j.check_questions),
-    knot_report: { error_type: str(r.error_type, 120), topic: str(r.topic, 120), tip: str(r.tip, 400) },
+    knot_report: { error_type: str(r.error_type, 120), topic: str(r.topic, 120), concept_en: conceptKey(str(r.concept_en, 80) || str(r.topic, 80)), tip: str(r.tip, 400) },
     confidence: conf(j.confidence),
   };
 }
@@ -286,6 +339,7 @@ export function parseDoubt(raw: string | unknown): DoubtAnswer {
     .slice(0, 10);
   if (steps.length === 0) throw new AnalysisParseError("model output has no explanation steps");
   return {
+    language: parseLangCode(j.language),
     ...parseDetected(j),
     question: str(j.question, 500),
     answer: str(j.answer, 500),
@@ -294,5 +348,118 @@ export function parseDoubt(raw: string | unknown): DoubtAnswer {
     misconception: str(j.misconception, 600),
     check_questions: parseQuestions(j.check_questions),
     confidence: conf(j.confidence),
+  };
+}
+
+// ---------------------------------------------------------------- practice (0.6 Knot profile)
+export const PRACTICE_SCHEMA_NAME = "practice_set";
+export const PRACTICE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["language", "title", "problems"],
+  properties: {
+    language: { type: "string" },
+    title: { type: "string" },
+    problems: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["concept", "question", "hint", "answer", "solution", "trap"],
+        properties: {
+          concept: { type: "string" },
+          question: { type: "string" },
+          hint: { type: "string" },
+          answer: { type: "string" },
+          solution: { type: "array", items: { type: "string" } },
+          trap: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
+export const VERIFY_SCHEMA_NAME = "practice_check";
+export const VERIFY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["checks"],
+  properties: {
+    checks: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["i", "verdict", "correct_answer"],
+        properties: {
+          i: { type: "integer" },
+          verdict: { type: "string", enum: ["agree", "disagree"] },
+          correct_answer: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
+export interface PracticeProblem { concept: string; question: string; hint: string; answer: string; solution: string[]; trap: string; verified?: boolean }
+export interface PracticeSet { language: string; title: string; problems: PracticeProblem[] }
+
+export function parsePractice(raw: string | unknown): PracticeSet {
+  const j = toJson(raw);
+  if (!isObj(j) || !Array.isArray(j.problems)) throw new AnalysisParseError("model output has no problems array");
+  const problems = j.problems.filter(isObj).map((p) => ({
+    concept: str(p.concept, 120),
+    question: str(p.question, 800),
+    hint: str(p.hint, 400),
+    answer: str(p.answer, 300),
+    solution: (Array.isArray(p.solution) ? p.solution : []).map((x) => str(x, 400)).filter(Boolean).slice(0, 6),
+    trap: str(p.trap, 300),
+  })).filter((p) => p.question && p.answer).slice(0, 5);
+  if (problems.length === 0) throw new AnalysisParseError("model output has no usable problems");
+  return { language: parseLangCode(j.language), title: str(j.title, 120), problems };
+}
+
+export interface VerifyCheck { i: number; verdict: "agree" | "disagree"; correct_answer: string }
+
+export function parseVerify(raw: string | unknown): VerifyCheck[] {
+  const j = toJson(raw);
+  if (!isObj(j) || !Array.isArray(j.checks)) throw new AnalysisParseError("checker output has no checks array");
+  return j.checks.filter(isObj).filter((c) => Number.isInteger(c.i)).map((c) => ({
+    i: c.i as number,
+    verdict: c.verdict === "agree" ? "agree" as const : "disagree" as const,
+    correct_answer: str(c.correct_answer, 300),
+  }));
+}
+
+/** Keep only problems the independent second pass agreed with; mark them verified. */
+export function applyVerification(set: PracticeSet, checks: VerifyCheck[]): { set: PracticeSet; dropped: number } {
+  const ok = new Set(checks.filter((c) => c.verdict === "agree").map((c) => c.i));
+  const problems = set.problems.filter((_, i) => ok.has(i)).map((p) => ({ ...p, verified: true }));
+  return { set: { ...set, problems }, dropped: set.problems.length - problems.length };
+}
+
+// ---------------------------------------------------------------- 0.6: knot confirmation
+export const CONFIRM_SCHEMA_NAME = "knot_confirm";
+export const CONFIRM_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["confirmed", "reason"],
+  properties: { confirmed: { type: "boolean" }, reason: { type: "string" } },
+} as const;
+
+export interface KnotConfirm { confirmed: boolean; reason: string }
+
+export function parseConfirm(raw: string | unknown): KnotConfirm {
+  const j = toJson(raw);
+  if (!isObj(j) || typeof j.confirmed !== "boolean") throw new AnalysisParseError("checker output has no confirmed flag");
+  return { confirmed: j.confirmed, reason: str(j.reason, 300) };
+}
+
+/** A second look overturned the knot: no knot, and the flagged and carried lines go back to correct. */
+export function overturnKnot(a: KnotAnalysis): KnotAnalysis {
+  return {
+    ...a,
+    knot: null,
+    steps: a.steps.map((s) => (s.status === "incorrect" || s.status === "consequence" ? { ...s, status: "correct" as const } : s)),
   };
 }

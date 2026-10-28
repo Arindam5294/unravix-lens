@@ -1,4 +1,5 @@
 // Client-side photo prep: honour EXIF orientation, resize to <= 1600 px, re-encode as JPEG.
+// 0.5.0: rotatePrepared() turns a photo upright (Rotate button / auto-orientation); grayOf() feeds orient.js.
 // Re-encoding through a canvas drops all EXIF/GPS metadata, so location never leaves the phone.
 
 export const MAX_EDGE = 1600;
@@ -82,10 +83,67 @@ export async function prepareImage(file) {
   ctx.drawImage(src, 0, 0, w, h);
   if (src.close) src.close();
 
+  const { blob, dataUrl } = await encode(canvas);
+  return { dataUrl, url: URL.createObjectURL(blob), width: w, height: h, bytes: blob.size };
+}
+
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new PrepError("decode", "Lens could not open that photo. Try another one."));
+    img.src = url;
+  });
+}
+
+async function encode(canvas) {
   let q = 0.86, blob = await toBlob(canvas, q);
   while (blob && blob.size > MAX_UPLOAD_BYTES * 0.95 && q > 0.45) { q -= 0.12; blob = await toBlob(canvas, q); }
   if (!blob) throw new PrepError("encode", "Lens could not prepare that photo. Try another one.");
   if (blob.size > MAX_UPLOAD_BYTES) throw new PrepError("too_big", "That photo is still too large after shrinking. Try a simpler photo.");
-  const dataUrl = await blobToDataUrl(blob);
-  return { dataUrl, url: URL.createObjectURL(blob), width: w, height: h, bytes: blob.size };
+  return { blob, dataUrl: await blobToDataUrl(blob) };
+}
+
+/**
+ * Turn a prepared photo by `deg` clockwise (90 / 180 / 270) and re-encode it, so the pixels Lens sends are
+ * upright. Returns a new prepared image; the caller revokes the old object URL.
+ * @param {{url:string,width:number,height:number}} img @param {number} deg
+ */
+export async function rotatePrepared(img, deg) {
+  const r = ((Math.round(deg / 90) * 90) % 360 + 360) % 360;
+  const src = await loadImage(img.url);
+  const w = src.naturalWidth, h = src.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = r % 180 === 0 ? w : h;
+  canvas.height = r % 180 === 0 ? h : w;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((r * Math.PI) / 180);
+  ctx.drawImage(src, -w / 2, -h / 2);
+  const { blob, dataUrl } = await encode(canvas);
+  return { dataUrl, url: URL.createObjectURL(blob), width: canvas.width, height: canvas.height, bytes: blob.size };
+}
+
+/**
+ * Small grayscale copy of a prepared photo (long edge `max` px) for on-device checks such as orientation.
+ * @param {{url:string}} img @returns {Promise<{gray:Uint8ClampedArray,w:number,h:number}|null>}
+ */
+export async function grayOf(img, max = 256) {
+  try {
+    const src = await loadImage(img.url);
+    const s = Math.min(1, max / Math.max(src.naturalWidth, src.naturalHeight));
+    const w = Math.max(8, Math.round(src.naturalWidth * s)), h = Math.max(8, Math.round(src.naturalHeight * s));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Uint8ClampedArray(w * h);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) gray[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    return { gray, w, h };
+  } catch {
+    return null;
+  }
 }

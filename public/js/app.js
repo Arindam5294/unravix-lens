@@ -1,8 +1,13 @@
 // Unravix Lens front end (vanilla ES modules, no build step). Swanix Labs.
-import { prepareImage, PrepError } from "./image.js";
+import { prepareImage, PrepError, rotatePrepared, grayOf } from "./image.js";
+import { normRot, rotateBox, textAxis } from "./orient.js";
 import { snapToImage } from "./snap.js";
 import { boxToPx, clampBox, contentRect, parseObjectPosition, placeLabels } from "./layout.js";
 import * as Report from "./report.js";
+import { doubtCaption, judgeChip } from "./caption.js";
+import * as I18n from "./i18n.js";
+import { hintsFor, prevFrom, rescanVerdict } from "./verify.js";
+import * as Voice from "./voice.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -21,7 +26,11 @@ const labels = $("#labels");
 const cap = $("#stage-cap");
 const knotCard = $("#knot-card");
 const errCard = $("#err-card");
-let lastImage = null; // { dataUrl, url } of the last live photo, for "Try again"
+let lastImage = null; // { dataUrl, url, width, height } of the photo to scan (upright as sent), for "Try again"
+let viewImage = null; // a rotated copy shown after a result when the student turns the view (never sent)
+let viewRot = 0; // clockwise turn of the result view, 0/90/180/270
+let resultBoxes = []; // boxes of the last result as drawn at viewRot 0 (after the ink snap)
+let resultBase = null; // { url } of the photo the last result was drawn on (the live photo or the sample)
 let runId = 0;
 let shownBoxes = []; // boxes currently drawn, for re-layout on resize
 let mode = "doubt"; // "doubt" (Ask a doubt) | "check" (Check my working)
@@ -29,6 +38,20 @@ let attached = null; // { dataUrl, url } photo attached to a doubt
 let lastDoubt = null; // { text, img } of the last live doubt, for "Try again"
 const asked = $("#asked");
 const stage = $("#stage");
+const previewCard = $("#preview-card");
+/** Sideways pages are turned this way by default: every real sideways phone photo so far needed it (0.5.0). */
+const AUTO_TURN = 270;
+const SCAN_TIMEOUT_MS = 90_000;
+const JUDGE_KEY = "lens-judge";
+let judgeCode = null;
+let langPref = I18n.getPref(); // "auto" or a language code, kept on this device only
+const navLang = () => (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+let uiLang = I18n.uiLangFor(langPref, navLang());
+const tt = (key, params) => I18n.t(key, params, uiLang);
+/** lang + ui_lang for every billed request. */
+const langBody = () => I18n.langFields(langPref, navLang());
+let pendingPrev = null;
+let lastResult = null; // { result, entryId } of the last check, for "Rescan to verify" // the knot the student says they fixed, sent once with the next scan ("Rescan to verify")
 
 /* ---------------- theme ---------------- */
 function initTheme() {
@@ -60,13 +83,68 @@ function initReveal() {
 async function checkHealth() {
   const dot = $("#api-dot"), txt = $("#api-text");
   try {
-    const r = await fetch(`${API}/api/health`, { cache: "no-store" });
+    const r = await fetch(`${API}/api/health`, { cache: "no-store", headers: judgeCode ? { "X-Lens-Judge": judgeCode } : {} });
     const j = await r.json();
     if (j.ok && j.configured) { dot.className = "dot is-ok"; txt.textContent = "Live · Meta SAM 3.1 + Muse Spark"; }
     else { dot.className = "dot is-bad"; txt.textContent = "Live answers offline · the samples still work"; }
+    if (j.judge === "invalid") { setJudge(null); judgeNote("That judge code was not recognised, so the public daily limit applies."); }
+    else if (j.judge === "valid") judgeNote("");
+    syncJudgeBadge();
   } catch {
     dot.className = "dot is-bad"; txt.textContent = "Live answers offline · the samples still work";
   }
+}
+
+/* ---------------- judges' access: ?judge=CODE link or the footer dialog ---------------- */
+function apiHeaders() {
+  const h = { "Content-Type": "application/json" };
+  if (judgeCode) h["X-Lens-Judge"] = judgeCode;
+  return h;
+}
+function setJudge(code) {
+  judgeCode = code ? String(code).trim().slice(0, 200) || null : null;
+  try { if (judgeCode) localStorage.setItem(JUDGE_KEY, judgeCode); else localStorage.removeItem(JUDGE_KEY); } catch {}
+  syncJudgeBadge();
+}
+function syncJudgeBadge() {
+  const b = $("#judge-badge");
+  if (b) b.hidden = !judgeCode;
+  const rm = $("#judge-remove");
+  if (rm) rm.hidden = !judgeCode;
+}
+function judgeNote(msg) {
+  const n = $("#judge-note");
+  if (n) { n.textContent = msg; n.hidden = !msg; }
+}
+function initJudge() {
+  const q = new URLSearchParams(location.search);
+  let code = null;
+  try { code = localStorage.getItem(JUDGE_KEY); } catch {}
+  if (q.get("judge")) {
+    code = q.get("judge");
+    // keep the code out of the address bar, screenshots and shared links
+    q.delete("judge");
+    history.replaceState(null, "", location.pathname + (q.toString() ? `?${q}` : "") + location.hash);
+  }
+  setJudge(code);
+  const dlg = $("#judge-dlg"), input = $("#judge-code");
+  $("#judge-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (e.submitter?.value === "cancel") { dlg.close(); return; }
+    const v = input.value.trim();
+    if (!v) { input.setAttribute("aria-invalid", "true"); input.focus(); return; }
+    setJudge(v);
+    input.value = "";
+    dlg.close();
+    await checkHealth();
+  });
+  $("#judge-remove").addEventListener("click", () => { setJudge(null); judgeNote(""); dlg.close(); });
+  input.addEventListener("input", () => input.removeAttribute("aria-invalid"));
+}
+function openJudge() {
+  const dlg = $("#judge-dlg");
+  if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+  setTimeout(() => $("#judge-code").focus(), 30);
 }
 
 /* ---------------- state ---------------- */
@@ -119,6 +197,12 @@ function initModes() {
   setProgressList(mode);
 }
 
+/** After 25 s: say that long pages take longer, so a slow scan does not look stuck. */
+function slowHint(on) {
+  const el = $("#slow-hint");
+  if (el) el.hidden = !on;
+}
+
 function setProgress(step) {
   $$("#progress li").forEach((li) => {
     const n = Number(li.dataset.step);
@@ -146,6 +230,10 @@ function clearStage() {
   labels.innerHTML = "";
   cap.innerHTML = "";
   shownBoxes = [];
+  resultBoxes = [];
+  viewRot = 0;
+  if (viewImage?.url) URL.revokeObjectURL(viewImage.url);
+  viewImage = null;
   asked.hidden = true;
   asked.textContent = "";
   stage.classList.remove("is-textonly");
@@ -232,25 +320,113 @@ async function runFile(file) {
     return renderError(e instanceof PrepError ? "prep" : "prep", e.message || "Lens could not open that photo.");
   }
   if (id !== runId) return;
-  if (lastImage?.url) URL.revokeObjectURL(lastImage.url);
-  lastImage = img;
+  // Sideways page? Text lines that run down the photo are found on-device for free; turn it upright first.
+  let turned = 0;
+  const g = await grayOf(img);
+  if (g && textAxis(g.gray, g.w, g.h).axis === "down") {
+    try {
+      const up = await rotatePrepared(img, AUTO_TURN);
+      URL.revokeObjectURL(img.url);
+      img = up;
+      turned = AUTO_TURN;
+    } catch { /* keep the photo as it is; the Rotate button still works */ }
+  }
+  if (id !== runId) return;
+  setLastImage(img);
   await showPhoto(img.url);
-  await analyze(img, id);
+  showPreview(turned);
+}
+
+function setLastImage(img) {
+  if (lastImage?.url && lastImage.url !== img.url) URL.revokeObjectURL(lastImage.url);
+  lastImage = img;
+}
+
+/** Preview: the photo as Lens will read it, with Rotate controls, before any paid call. */
+function showPreview(turned = 0) {
+  previewCard.innerHTML = `
+    <div class="knot__top"><span class="chip chip--ok">Photo ready</span>${turned ? `<span class="chip chip--violet">Turned upright</span>` : ""}</div>
+    <h3>Is the writing the right way up?</h3>
+    <p class="pv__note">${turned
+      ? "The page was sideways, so Lens turned it. If the writing still isn't upright, rotate it before scanning."
+      : "Lens reads best when lines run left to right. Rotate the photo if it is sideways or upside down."}</p>
+    <div class="btns pv__go">
+      <button class="btn" type="button" data-action="scan-now"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Find the knot</button>
+    </div>
+    <div class="pv__rot" role="group" aria-label="Rotate photo">
+      <button class="btn btn--ghost" type="button" data-action="rotate" data-deg="270" aria-label="Rotate left 90 degrees"><svg class="i" aria-hidden="true"><use href="#i-rotl"/></svg>Rotate left</button>
+      <button class="btn btn--ghost" type="button" data-action="rotate" data-deg="90" aria-label="Rotate right 90 degrees"><svg class="i" aria-hidden="true"><use href="#i-rotr"/></svg>Rotate right</button>
+    </div>
+    <div class="btns">
+      <button class="btn btn--ghost btn--sm" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>New photo</button>
+    </div>`;
+  setState("preview");
+  setTimeout(() => $('[data-action="scan-now"]', previewCard)?.focus({ preventScroll: true }), 60);
+}
+
+let rotating = false;
+/** Rotate button. Preview: turns the photo that will be sent. Result: turns the view, boxes follow. */
+async function rotateBy(deg) {
+  const state = panel.dataset.state;
+  if (rotating || (state === "preview" ? !lastImage : !resultBase)) return;
+  rotating = true;
+  const btns = $$('[data-action="rotate"]');
+  btns.forEach((b) => (b.disabled = true));
+  try {
+    if (state === "preview") {
+      const img = await rotatePrepared(lastImage, deg);
+      setLastImage(img);
+      await showPhoto(img.url);
+      setState("preview");
+    } else if (state === "result") {
+      viewRot = normRot(viewRot + deg);
+      const old = viewImage;
+      viewImage = viewRot ? await rotatePrepared(resultBase, viewRot) : null;
+      if (old?.url) URL.revokeObjectURL(old.url);
+      photo.src = viewImage ? viewImage.url : resultBase.url;
+      try { await photo.decode(); } catch {}
+      drawBoxes(resultBoxes.map((b) => rotateBox(b, viewRot)), { keep: true });
+      const again = $("#rescan-view");
+      if (again) again.hidden = viewRot === 0;
+    }
+  } catch {
+    renderError("prep", "Lens could not rotate that photo. Try another one.");
+  } finally {
+    rotating = false;
+    btns.forEach((b) => (b.disabled = false));
+  }
+}
+
+/** "Scan again this way up": the turned view becomes the photo Lens reads. */
+async function rescanRotated(deg) {
+  if (!lastImage) return;
+  try {
+    const img = await rotatePrepared(lastImage, deg);
+    setLastImage(img);
+    clearStage();
+    await showPhoto(img.url);
+    analyze(img);
+  } catch {
+    renderError("prep", "Lens could not rotate that photo. Try another one.");
+  }
 }
 
 async function analyze(img, id = ++runId) {
+  const prev = pendingPrev;
+  pendingPrev = null;
   setState("working");
   setProgress(1);
   const t1 = setTimeout(() => id === runId && setProgress(2), 1600);
   const t2 = setTimeout(() => id === runId && setProgress(3), 7000);
+  const t3 = setTimeout(() => id === runId && slowHint(true), 25_000);
   const ctl = new AbortController();
-  const timeout = setTimeout(() => ctl.abort(), 60_000);
+  const timeout = setTimeout(() => ctl.abort(), SCAN_TIMEOUT_MS);
   let res, body;
   try {
     res = await fetch(`${API}/api/analyze`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: img.dataUrl }),
+      headers: apiHeaders(),
+      body: JSON.stringify({ image: img.dataUrl, ...langBody(), ...(prev ? { prev } : {}) }),
       signal: ctl.signal,
     });
     body = await res.json().catch(() => null);
@@ -258,10 +434,11 @@ async function analyze(img, id = ++runId) {
     body = null;
     res = { ok: false, status: e?.name === "AbortError" ? 504 : 0 };
   } finally {
-    clearTimeout(t1); clearTimeout(t2); clearTimeout(timeout);
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(timeout);
+    slowHint(false);
   }
   if (id !== runId) return;
-  if (res.ok && body?.ok) return renderResult(body);
+  if (res.ok && body?.ok) return renderResult(prev ? { ...body, rescanOf: prev } : body);
   const code = body?.error?.code || (res.status === 504 ? "timeout" : "network");
   renderError(code, body?.error?.message);
 }
@@ -339,14 +516,15 @@ async function submitDoubt(text, img) {
   setProgress(1);
   const t1 = setTimeout(() => id === runId && setProgress(2), 1800);
   const t2 = setTimeout(() => id === runId && setProgress(3), 9000);
+  const t3 = setTimeout(() => id === runId && slowHint(true), 25_000);
   const ctl = new AbortController();
-  const timeout = setTimeout(() => ctl.abort(), 60_000);
+  const timeout = setTimeout(() => ctl.abort(), SCAN_TIMEOUT_MS);
   let res, body;
   try {
     res = await fetch(`${API}/api/doubt`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(img ? { text, image: img.dataUrl } : { text }),
+      headers: apiHeaders(),
+      body: JSON.stringify(img ? { text, image: img.dataUrl, ...langBody() } : { text, ...langBody() }),
       signal: ctl.signal,
     });
     body = await res.json().catch(() => null);
@@ -354,7 +532,8 @@ async function submitDoubt(text, img) {
     body = null;
     res = { ok: false, status: e?.name === "AbortError" ? 504 : 0 };
   } finally {
-    clearTimeout(t1); clearTimeout(t2); clearTimeout(timeout);
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(timeout);
+    slowHint(false);
   }
   if (id !== runId) return;
   if (res.ok && body?.ok) return renderDoubt({ ...body, asked: text });
@@ -395,13 +574,7 @@ function wireCard() {
 
 function renderDoubt(result) {
   const d = result.doubt || {};
-  const secs = result.timing?.total_ms ? `${(result.timing.total_ms / 1000).toFixed(1)} s` : "";
-  cap.innerHTML = [
-    result.sample ? `<span class="chip chip--violet">Sample · cached answer, no API call</span>` : "",
-    `<span class="chip">Muse Spark 1.3</span>`,
-    result.input?.image ? `<span class="chip">Photo read</span>` : `<span class="chip">Text only · no SAM call</span>`,
-    secs ? `<span class="chip">${secs}</span>` : "",
-  ].join("");
+  cap.innerHTML = doubtCaption(result);
   if (result.asked !== undefined && !asked.textContent && !photo.getAttribute("src")) showAsked(result.asked || d.question || "", null);
   const qs = questionsHtml(d.check_questions, "dq");
   const steps = (d.steps || []).map((s) => `<li>${s.title ? `<b>${esc(s.title)}</b>` : ""}${s.detail ? `<p>${esc(s.detail)}</p>` : ""}</li>`).join("");
@@ -427,11 +600,14 @@ const KIND_WORD = { ok: "Untied", knot: "Knot", carry: "Carried", unclear: "Uncl
 const SEG = { "sam-3.1": "SAM 3.1 boxes", "sam+spark": "SAM 3.1 + Spark boxes", "spark-estimate": "Spark-estimated boxes", none: "No boxes" };
 
 const BOX_PAD = 6; // grid units around the ink
+/** Clockwise turn that makes the page upright, from Spark's page_up (same map as the Worker's rotationFor). */
+const PAGE_TURN = { right: 270, bottom: 180, left: 90 };
 
-function drawBoxes(boxes) {
+function drawBoxes(boxes, { keep = false } = {}) {
   overlay.innerHTML = "";
   labels.innerHTML = "";
   shownBoxes = boxes;
+  overlay.classList.toggle("is-instant", keep); // a re-draw after Rotate does not replay the draw-in animation
   const ns = "http://www.w3.org/2000/svg";
   boxes.forEach((b, i) => {
     const kind = KIND[b.status] || "unclear";
@@ -478,6 +654,9 @@ function renderResult(result) {
   boxes = snapToImage(photo, boxes);
   const snapped = boxes.filter((b) => b.snapped).length;
   void before;
+  resultBoxes = boxes;
+  resultBase = result.sample ? { url: photo.currentSrc || photo.src } : lastImage;
+  viewRot = 0;
   drawBoxes(boxes);
 
   const secs = result.timing?.total_ms ? `${(result.timing.total_ms / 1000).toFixed(1)} s` : "";
@@ -486,6 +665,9 @@ function renderResult(result) {
     `<span class="chip">${esc(SEG[result.segmentation] || "Boxes")}</span>`,
     snapped ? `<span class="chip">${snapped} snapped to ink</span>` : "",
     secs ? `<span class="chip">${secs}</span>` : "",
+    judgeChip(result),
+    boxes.length ? `<button class="chip chip--btn" type="button" data-action="rotate" data-deg="90" aria-label="Rotate the photo and boxes 90 degrees right"><svg class="i" aria-hidden="true"><use href="#i-rotr"/></svg>Rotate</button>` : "",
+    !result.sample && boxes.length ? `<button class="chip chip--btn" type="button" id="rescan-view" data-action="rescan-view" hidden>Scan again this way up</button>` : "",
   ].join("");
 
   const steps = a.steps || [];
@@ -503,29 +685,59 @@ function renderResult(result) {
     </button>`).join("");
   const actions = `<div class="btns"><button class="btn" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Scan another</button><a class="btn btn--ghost" href="#report">Knot Report</a></div>`;
   const subject = detectChips(a);
+  const turn = PAGE_TURN[a.page_up] || 0;
+  const sideways = !result.sample && turn && lastImage
+    ? `<div class="warn" role="note"><p><b>This photo looks ${a.page_up === "bottom" ? "upside down" : "sideways"}.</b> Lens reads pages best upright, and the boxes may be off.</p><button class="btn btn--sm" type="button" data-action="rotate-rescan" data-deg="${turn}"><svg class="i" aria-hidden="true"><use href="#i-rotr"/></svg>Turn upright and scan again</button></div>`
+    : "";
+
+  const entry = Report.entryFrom(result);
+  lastResult = { result, entryId: entry && !result.demo ? entry.id : null };
+  let verdict = "";
+  if (result.rescanOf) {
+    const v = rescanVerdict(result.rescanOf, a);
+    if (v) {
+      if ((v.kind === "untied" || v.kind === "next") && result.rescanOf.entryId) Report.markFixed(result.rescanOf.entryId);
+      const msg = v.kind === "untied" ? tt("untied") : v.kind === "next" ? tt("next_knot", { n: v.n }) : v.kind === "still" ? tt("still_there", { n: v.n }) : tt("not_visible");
+      const cls = v.kind === "untied" || v.kind === "next" ? "ok" : v.kind === "still" ? "knot" : "amber";
+      verdict = `<div class="verdict verdict--${cls}" role="status"><b>${esc(msg)}</b>${v.kind === "untied" ? `<span>${esc(tt("untied_sub"))}</span>` : ""}</div>`;
+    }
+  }
 
   if (a.checkable === false) {
     knotCard.innerHTML = `
-      <div class="knot__top"><span class="chip chip--amber">Not step-checkable</span>${subject}</div>
+      <div class="knot__top"><span class="chip chip--amber">Not step-checkable</span>${subject}</div>${sideways}
       <h3>There's no single right line of working here.</h3>
       <div class="nc"><p>${esc(a.not_checkable_reason || "This looks like an essay or an opinion, so there is no one wrong step to find.")}</p><p>Lens can explain the topic instead, at your level.</p></div>
       ${qs ? `<div><p class="knot__label">Think about</p><div class="qs">${qs}</div></div>` : ""}
       <div class="btns"><button class="btn" type="button" data-action="explain-instead"${lastImage ? "" : " disabled"}><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Explain this instead</button><button class="btn btn--ghost" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Scan another</button></div>`;
   } else if (knot) {
     const wrong = steps.find((s) => s.n === knot.step_n)?.transcription || "";
+    const hints = hintsFor(knot, steps);
     knotCard.innerHTML = `
-      <div class="knot__top"><span class="chip chip--knot">● Knotted at step ${knot.step_n}</span>${subject}</div>
-      <h3>${esc(knot.what_is_wrong)}</h3>
-      <div><p class="knot__label">The fix</p><div class="fix">${wrong ? `<span class="fix__from">${esc(wrong)}</span>` : ""}<span class="fix__to">${esc(knot.corrected_step)}</span></div></div>
-      <div class="why"><p class="knot__label">Why it happens</p><p><b>${esc(knot.misconception)}</b></p><p style="margin-top:6px">${esc(knot.explanation)}</p></div>
-      ${qs ? `<div><p class="knot__label">Check yourself</p><div class="qs">${qs}</div></div>` : ""}
-      ${a.knot_report?.tip ? `<p class="tip"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg><span>${esc(a.knot_report.tip)}</span></p>` : ""}
+      ${verdict}
+      <div class="knot__top"><span class="chip chip--knot">● ${esc(tt("knotted_at", { n: knot.step_n }))}</span>${subject}</div>${sideways}
+      <h3>${esc(tt("spot_it", { n: knot.step_n }))}</h3>
+      <p class="spot__sub">${esc(tt("spot_sub"))}</p>
+      <ol class="hints" id="hints" aria-live="polite">${hints.map((h, i) => `<li class="hint" data-hint="${i}" hidden><span class="hint__n">${esc(tt("hint_n", { n: i + 1 }))}</span><p dir="auto">${esc(h)}</p></li>`).join("")}</ol>
+      <div class="btns ladder" id="ladder">
+        <button class="btn" type="button" data-action="hint"><svg class="i" aria-hidden="true"><use href="#i-bulb"/></svg><span>${esc(tt("hint_btn"))}</span></button>
+        <button class="btn btn--ghost" type="button" data-action="show-fix"><svg class="i" aria-hidden="true"><use href="#i-eye"/></svg>${esc(tt("show_fix_now"))}</button>
+      </div>
+      <div class="fixwrap" id="fixwrap" hidden>
+        <h4 class="fix__what" dir="auto">${esc(knot.what_is_wrong)}</h4>
+        <div><p class="knot__label">${esc(tt("the_fix"))}</p><div class="fix">${wrong ? `<span class="fix__from">${esc(wrong)}</span>` : ""}<span class="fix__to">${esc(knot.corrected_step)}</span></div></div>
+        <div class="why" dir="auto"><p class="knot__label">${esc(tt("why"))}</p><p><b>${esc(knot.misconception)}</b></p><p style="margin-top:6px">${esc(knot.explanation)}</p></div>
+        ${qs ? `<div><p class="knot__label">${esc(tt("check_yourself"))}</p><div class="qs" dir="auto">${qs}</div></div>` : ""}
+        ${a.knot_report?.tip ? `<p class="tip" dir="auto"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg><span>${esc(a.knot_report.tip)}</span></p>` : ""}
+        <div class="btns"><button class="btn" type="button" data-action="rescan-fixed"><svg class="i" aria-hidden="true"><use href="#i-redo"/></svg>${esc(tt("rescan"))}</button></div>
+      </div>
       ${stepList}
       ${confRow}
       ${actions}`;
   } else {
     knotCard.innerHTML = `
-      <div class="knot__top"><span class="chip chip--ok">✓ All untied</span>${subject}</div>
+      ${verdict}
+      <div class="knot__top"><span class="chip chip--ok">✓ All untied</span>${subject}</div>${sideways}
       <div class="ok-state"><h3>No knot found. Every step holds.</h3><p style="margin-top:6px">Try these to go one level deeper.</p></div>
       ${qs ? `<div><p class="knot__label">Go deeper</p><div class="qs">${qs}</div></div>` : ""}
       ${stepList}
@@ -541,38 +753,217 @@ function renderResult(result) {
   setProgress(4);
   setState("result");
 
-  const entry = Report.entryFrom(result);
   if (entry && !result.demo) { Report.add(entry); renderReport(); }
+}
+
+/* ---------------- hint ladder + rescan to verify (0.6) ---------------- */
+function nextHint() {
+  const hidden = $$(".hint[hidden]", knotCard);
+  if (!hidden.length) return showFix();
+  hidden[0].hidden = false;
+  hidden[0].classList.add("is-new");
+  const left = hidden.length - 1;
+  const btn = $('[data-action="hint"]', knotCard);
+  if (btn) {
+    if (left === 0) { btn.querySelector("span").textContent = tt("show_fix"); btn.dataset.action = "show-fix"; }
+    else btn.querySelector("span").textContent = tt("next_hint");
+  }
+}
+function showFix() {
+  $$(".hint", knotCard).forEach((h) => (h.hidden = false));
+  const fw = $("#fixwrap", knotCard);
+  if (fw) { fw.hidden = false; fw.classList.add("is-new"); }
+  const ladder = $("#ladder", knotCard);
+  if (ladder) ladder.hidden = true;
+  fw?.scrollIntoView({ block: "nearest", behavior: reduced() ? "auto" : "smooth" });
+}
+/** "I fixed it": remember this knot, then take a new photo; the next scan says whether it is untied. */
+function startRescan() {
+  if (!lastResult) return;
+  pendingPrev = prevFrom(lastResult.result, lastResult.entryId);
+  setMode("check");
+  const touch = matchMedia("(hover: none), (pointer: coarse)").matches;
+  const input = $(touch ? "#file-camera" : "#file-any");
+  input.value = "";
+  input.click();
+}
+
+/* ---------------- practice my weak spots (0.6) ---------------- */
+async function runPractice(btn) {
+  const spots = Report.weakSpots(Report.load());
+  const concepts = Report.practiceConcepts(spots);
+  const out = $("#practice-out");
+  if (!concepts.length || !out) return;
+  btn.disabled = true;
+  out.innerHTML = `<p class="practice__busy" role="status"><span class="spin" aria-hidden="true"></span>${esc(tt("practice_busy"))}</p>`;
+  let res, body;
+  try {
+    res = await fetch(`${API}/api/practice`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ concepts, count: 3, ...langBody() }) });
+    body = await res.json().catch(() => null);
+  } catch { res = { ok: false }; body = null; }
+  btn.disabled = false;
+  if (!res.ok || !body?.ok) {
+    const e = ERRORS[body?.error?.code] || ERRORS.upstream_error;
+    out.innerHTML = `<p class="practice__err" role="alert"><b>${esc(e.t)}</b> ${esc(body?.error?.message || e.p)}</p>`;
+    return;
+  }
+  const probs = body.practice?.problems || [];
+  out.innerHTML = `<div class="practice__head"><b>${esc(body.practice?.title || tt("practice_title"))}</b><span class="chip chip--ok">✓ ${esc(tt("verified"))}</span></div>
+    <ol class="practice__list">${probs.map((p, i) => `
+      <li class="pcard glass" dir="auto">
+        <p class="pcard__topic">${esc(p.concept || "")}</p>
+        <p class="pcard__q">${esc(p.question || "")}</p>
+        ${p.hint ? `<details class="pcard__hint"><summary>${esc(tt("hint"))}</summary><p>${esc(p.hint)}</p></details>` : ""}
+        <button class="q" type="button" aria-expanded="false" aria-controls="pa-${i}"><span class="q__q"><span>${esc(tt("show_answer"))}</span></span><span class="q__a" id="pa-${i}"><b>${esc(p.answer || "")}</b>${(p.solution || []).length ? `<ol class="pcard__sol">${p.solution.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}${p.trap ? `<small>${esc(tt("watch_out"))}: ${esc(p.trap)}</small>` : ""}</span></button>
+      </li>`).join("")}</ol>`;
+  $$(".q", out).forEach((b) => b.addEventListener("click", () => b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true"))));
+}
+
+/* ---------------- speak your doubt: Muse Voice Transcribe (0.6) ---------------- */
+let recording = null;
+function initVoice() {
+  const btn = $("#ask-mic");
+  if (!btn) return;
+  if (!Voice.canRecord()) { btn.hidden = true; return; }
+  const label = $("#ask-mic-t");
+  const hint = $("#ask-hint");
+  const setBtn = (st) => {
+    btn.dataset.state = st;
+    btn.setAttribute("aria-pressed", String(st === "rec"));
+    label.textContent = st === "rec" ? tt("listening") : st === "busy" ? tt("transcribing") : tt("speak");
+    btn.disabled = st === "busy";
+  };
+  setBtn("idle");
+  btn.addEventListener("click", async () => {
+    if (btn.dataset.state === "busy") return;
+    if (!recording) {
+      try {
+        recording = await Voice.record({ onLimit: () => btn.click() });
+        setBtn("rec");
+      } catch {
+        recording = null;
+        hint.textContent = tt("mic_denied");
+        setBtn("idle");
+      }
+      return;
+    }
+    const r = recording;
+    recording = null;
+    setBtn("busy");
+    let clip;
+    try { clip = await r.stop(); } catch { setBtn("idle"); hint.textContent = tt("mic_denied"); return; }
+    let res, body;
+    try {
+      res = await fetch(`${API}/api/voice`, { method: "POST", headers: apiHeaders(), body: JSON.stringify({ audio: clip.dataUrl, ...langBody() }) });
+      body = await res.json().catch(() => null);
+    } catch { res = { ok: false }; body = null; }
+    setBtn("idle");
+    if (!res.ok || !body?.ok) {
+      const e = ERRORS[body?.error?.code] || ERRORS.upstream_error;
+      hint.textContent = body?.error?.message || e.p || e.t;
+      return;
+    }
+    const ta = $("#ask-text");
+    const text = String(body.text || "").trim();
+    if (!text) { hint.textContent = ERRORS.bad_audio.t; return; }
+    ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + text;
+    ta.dispatchEvent(new Event("input"));
+    ta.focus();
+    hint.textContent = tt("voice_hint");
+  });
+}
+
+/* ---------------- language picker + translated UI (0.6) ---------------- */
+function applyLang() {
+  uiLang = I18n.uiLangFor(langPref, navLang());
+  const root = document.documentElement;
+  root.lang = uiLang;
+  root.dir = I18n.isRtl(uiLang) ? "rtl" : "ltr";
+  $$("[data-i18n]").forEach((el) => { el.textContent = tt(el.dataset.i18n); });
+  $$("[data-i18n-ph]").forEach((el) => { el.setAttribute("placeholder", tt(el.dataset.i18nPh)); });
+  const cur = langPref === "auto" ? null : I18n.findLang(langPref);
+  const b = $("#lang-cur");
+  if (b) b.textContent = cur ? cur.native : "Auto";
+  $("#lang-btn")?.setAttribute("aria-label", `${tt("lang_label")}: ${cur ? cur.name : tt("lang_auto")}`);
+  const mic = $("#ask-mic");
+  if (mic && !recording && mic.dataset.state !== "busy") $("#ask-mic-t").textContent = tt("speak");
+}
+function langItem(l) {
+  const on = langPref === l.code;
+  return `<li><button type="button" class="lang__item${on ? " is-on" : ""}" data-code="${esc(l.code)}" aria-pressed="${on}"><span class="lang__native" dir="auto" lang="${esc(l.code)}">${esc(l.native)}</span><span class="lang__name">${esc(l.name)}</span></button></li>`;
+}
+function renderLangList(q = "") {
+  const list = I18n.searchLangs(q);
+  const ind = list.filter((l) => l.indian), world = list.filter((l) => !l.indian);
+  const autoOn = langPref === "auto";
+  const showAuto = !q || "auto".includes(q.trim().toLowerCase());
+  $("#lang-list").innerHTML = [
+    showAuto ? `<li><button type="button" class="lang__item lang__item--auto${autoOn ? " is-on" : ""}" data-code="auto" aria-pressed="${autoOn}"><span class="lang__native">Auto</span><span class="lang__name">${esc(tt("lang_auto"))}</span></button></li>` : "",
+    ind.length ? `<li class="lang__group">${esc(tt("lang_indian"))}</li>${ind.map(langItem).join("")}` : "",
+    world.length ? `<li class="lang__group">${esc(tt("lang_world"))}</li>${world.map(langItem).join("")}` : "",
+    !list.length && !showAuto ? `<li class="lang__none">${esc(tt("lang_none"))}</li>` : "",
+  ].join("");
+}
+function openLang() {
+  const dlg = $("#lang-dlg");
+  const input = $("#lang-q");
+  input.value = "";
+  input.placeholder = tt("lang_search");
+  $("#lang-title").textContent = tt("lang_label");
+  renderLangList();
+  if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+  setTimeout(() => input.focus(), 30);
+}
+function initLang() {
+  const dlg = $("#lang-dlg");
+  $("#lang-q").addEventListener("input", (e) => renderLangList(e.target.value));
+  $("#lang-list").addEventListener("click", (e) => {
+    const b = e.target.closest(".lang__item");
+    if (!b) return;
+    langPref = I18n.setPref(b.dataset.code);
+    applyLang();
+    renderReport();
+    dlg.close();
+  });
+  $("#lang-close").addEventListener("click", () => dlg.close());
+  applyLang();
 }
 
 /* ---------------- errors ---------------- */
 const ERRORS = {
   budget_exhausted: { t: "Lens is resting", p: "The demo budget for this hackathon is used up, so live scans are paused. The sample still shows the full flow.", sample: true },
-  daily_limit: { t: "That's today's free questions", p: "Each device gets 15 free questions and scans a day to keep Lens free for everyone. Come back tomorrow, or try a sample now.", sample: true },
+  daily_limit: { t: "That's today's free questions", p: "Each device gets 15 free questions and scans a day to keep Lens free for everyone. It resets at 05:30 IST. Until then the samples show the full flow.", sample: true, judge: true },
+  judge_limit: { t: "Judge allowance used for today", p: "This judge code has used today's scans and questions. It resets at 05:30 IST (00:00 UTC). The samples still show the full flow.", sample: true },
+  judge_code_invalid: { t: "That judge code didn't work", p: "Check the code or the link you were given. You can also remove it and use the public demo.", judge: true, clearJudge: true },
   empty_doubt: { t: "Nothing to explain yet", p: "Type a question or add a photo of it.", retake: true },
   doubt_too_long: { t: "That question is very long", p: "Keep it under 2,000 characters, or photograph the page instead.", retake: true },
   no_steps: { t: "No steps found", p: "Lens could not find handwritten working in this photo.", tips: ["One solution per photo, filling most of the frame", "Bright, even light with no strong shadows", "Dark pen or pencil on plain or ruled paper"], retake: true },
-  upstream_busy: { t: "Lens is busy", p: "Lots of people are scanning right now. Try again in a minute.", retry: true },
+  upstream_busy: { t: "Lens is busy", p: "Meta's models are handling a lot of requests right now. Wait a minute and try again; nothing was counted against your free scans.", retry: true },
   upstream_error: { t: "Lens couldn't untangle this one", p: "Something went wrong while reading it. Try again, or rephrase the question or take a clearer photo.", retry: true, retake: true },
-  timeout: { t: "That took too long", p: "The scan did not finish in time. Check your connection and try again.", retry: true },
+  timeout: { t: "That took too long", p: "The scan did not finish within 90 seconds. Check your connection and try again. A closer photo of one solution is also quicker to read.", retry: true },
   network: { t: "Can't reach Lens", p: "Live scans are offline or your connection dropped. The sample works without a connection to the API.", retry: true, sample: true },
   not_configured: { t: "Live scans are offline", p: "Lens is not connected right now. The sample still shows the full flow.", sample: true },
   prep: { t: "That photo didn't work", p: "", retake: true },
-  invalid_image: { t: "That photo didn't work", p: "", retake: true },
+  invalid_image: { t: "That photo didn't work", p: "Lens needs a JPEG, PNG or WebP photo.", retake: true },
+  bad_request: { t: "Something went wrong", p: "Lens could not read that request. Reload the page and try again.", retake: true },
   image_too_large: { t: "That photo is too large", p: "", retake: true },
   payload_too_large: { t: "That photo is too large", p: "", retake: true },
+  bad_practice: { t: "Nothing to practise yet", p: "Scan some working first. Lens builds practice from the knots it finds.", retake: true },
+  bad_audio: { t: "Lens couldn't hear that", p: "", retake: true },
 };
 
 const canRetry = () => (mode === "doubt" ? Boolean(lastDoubt) : Boolean(lastImage));
 
 function renderError(code, message) {
   const e = ERRORS[code] || ERRORS.upstream_error;
-  const p = message && (!e.p || code === "prep" || code.includes("image") || code.includes("payload") || code.includes("doubt")) ? message : e.p;
+  const p = message && (!e.p || code === "prep" || code === "invalid_image" || code.includes("too_large") || code.includes("doubt")) ? message : e.p;
   const btns = [
     e.retry && canRetry() ? `<button class="btn" type="button" data-action="retry"><svg class="i" aria-hidden="true"><use href="#i-redo"/></svg>Try again</button>` : "",
     e.retake ? `<button class="btn${e.retry && canRetry() ? " btn--ghost" : ""}" type="button" data-action="again"><svg class="i" aria-hidden="true"><use href="#i-${mode === "doubt" ? "chat" : "camera"}"/></svg>${mode === "doubt" ? "Edit question" : "New photo"}</button>` : "",
     e.sample ? `<button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Try the sample</button>` : "",
+    e.judge ? `<button class="btn btn--ghost" type="button" data-action="judge"><svg class="i" aria-hidden="true"><use href="#i-key"/></svg>${judgeCode ? "Change judge code" : "I have a judge code"}</button>` : "",
   ].join("");
+  if (e.clearJudge) setJudge(null);
   errCard.innerHTML = `
     <div class="err__icon" aria-hidden="true"><svg class="i"><use href="#i-alert"/></svg></div>
     <h3>${esc(e.t)}</h3>
@@ -583,6 +974,24 @@ function renderError(code, message) {
 }
 
 /* ---------------- knot report ---------------- */
+function weakHtml(list) {
+  const spots = Report.weakSpots(list);
+  if (!spots.length) return "";
+  return `<div class="weak glass">
+      <div class="weak__head"><h3>${esc(tt("weak_title"))}</h3></div>
+      <ul class="weak__list">${spots.map((g) => `
+        <li class="weak__row">
+          <span class="weak__name" dir="auto">${esc(g.topic)}</span>
+          <span class="weak__bar" aria-hidden="true"><span style="width:${Math.max(8, Math.round(g.weight * 100))}%"></span></span>
+          <span class="weak__n">×${g.open}${g.count > g.open ? ` · ${g.count - g.open} ${esc(tt("fixed"))}` : ""}</span>
+          <button class="weak__rm" type="button" data-action="rm-concept" data-key="${esc(g.key)}" aria-label="${esc(tt("remove"))}: ${esc(g.topic)}"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+        </li>`).join("")}</ul>
+      <div class="btns"><button class="btn" type="button" data-action="practice"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>${esc(tt("practice"))}</button></div>
+      <p class="weak__privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg>${esc(tt("profile_privacy"))}</p>
+      <div id="practice-out" class="practice" aria-live="polite"></div>
+    </div>`;
+}
+
 function renderReport() {
   const body = $("#report-body");
   const list = Report.load();
@@ -605,7 +1014,8 @@ function renderReport() {
         <span class="topic__name">${esc(g.topic)}</span>
         <span class="topic__meta">${g.recurring ? `<span class="chip chip--knot">Keeps coming back</span>` : ""}<span class="count">×${g.count}</span></span>
         <p class="topic__tip">${esc(g.tip || g.error_type)} <span style="color:var(--text-3)">· last ${fmt(g.last)}</span></p>
-      </li>`).join("")}</ul>`;
+      </li>`).join("")}</ul>
+    ${weakHtml(list)}`;
 }
 
 /* ---------------- inputs ---------------- */
@@ -657,6 +1067,17 @@ function initInputs() {
     if (!el) return;
     const act = el.dataset.action;
     if (act === "sample") runSample();
+    else if (act === "rotate") rotateBy(Number(el.dataset.deg) || 90);
+    else if (act === "scan-now") { if (lastImage) analyze(lastImage); }
+    else if (act === "rescan-view") { if (viewRot) rescanRotated(viewRot); }
+    else if (act === "rotate-rescan") rescanRotated(Number(el.dataset.deg) || 0);
+    else if (act === "judge") openJudge();
+    else if (act === "hint") nextHint();
+    else if (act === "show-fix") showFix();
+    else if (act === "rescan-fixed") startRescan();
+    else if (act === "practice") runPractice(el);
+    else if (act === "rm-concept") { Report.removeConcept(el.dataset.key); renderReport(); }
+    else if (act === "lang") openLang();
     else if (act === "mode-doubt" || act === "mode-check") {
       setMode(act === "mode-doubt" ? "doubt" : "check", { scroll: true });
       if (panel.dataset.state !== "idle") { runId++; setState("idle"); clearStage(); }
@@ -665,7 +1086,7 @@ function initInputs() {
       setMode("check");
       const touch = matchMedia("(hover: none), (pointer: coarse)").matches;
       if (touch) pickFile(true); else { setState("idle"); scrollToPanel(); }
-    } else if (act === "again") { runId++; setState("idle"); clearStage(); scrollToPanel(); if (mode === "doubt") $("#ask-text").focus({ preventScroll: true }); }
+    } else if (act === "again") { pendingPrev = null; runId++; setState("idle"); clearStage(); scrollToPanel(); if (mode === "doubt") $("#ask-text").focus({ preventScroll: true }); }
     else if (act === "retry") { if (mode === "doubt" && lastDoubt) submitDoubt(lastDoubt.text, lastDoubt.img); else if (lastImage) analyze(lastImage); }
     else if (act === "explain-instead" && lastImage) {
       setMode("doubt");
@@ -693,6 +1114,9 @@ async function demoHooks() {
     await showPhoto(SAMPLE_IMG);
     const r = await fetch(SAMPLE_JSON).then((x) => x.json());
     renderResult({ ...r, sample: true, demo: true, boxes: (r.boxes || []).map((b) => ({ ...b, status: "unclear" })), analysis: { ...r.analysis, steps: (r.analysis.steps || []).map((x) => ({ ...x, status: "unclear" })), checkable: false, knot: null, not_checkable_reason: "This is an opinion paragraph, so there is no single right line of reasoning to check.", category: "language", subject: "Opinion writing", level: "Class 9" } });
+  } else if (st === "preview") {
+    await showPhoto(SAMPLE_IMG);
+    showPreview(q.has("turned") ? AUTO_TURN : 0);
   } else if (st === "scanning") {
     runId++;
     setState("working");
@@ -719,10 +1143,13 @@ function initLayout() {
 }
 
 initTheme();
+initJudge();
 initModes();
 initLayout();
 initReveal();
 initInputs();
+initLang();
+initVoice();
 renderReport();
 checkHealth();
 demoHooks();

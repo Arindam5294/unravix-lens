@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Unravix Lens · Public benchmark</title>
+  <meta name="description" content="60 held-out handwritten problems, Class 3 to PhD, run through live Unravix Lens. Every item, every miss, every cost." />
+  <meta name="theme-color" content="#06070b" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .bm{max-width:1080px;margin:0 auto;padding:96px 20px 64px;color:var(--text)}
+    .bm h1{font-family:var(--display);font-size:clamp(30px,6vw,52px);line-height:1.05;margin:0 0 12px}
+    .bm h2{font-family:var(--display);font-size:clamp(22px,4vw,30px);margin:48px 0 12px}
+    .bm p{color:var(--text-2);line-height:1.6;max-width:72ch}
+    .bm .back{color:var(--text-2);text-decoration:none;font-size:14px}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:24px 0}
+    .card{background:var(--glass);border:1px solid var(--glass-stroke);border-radius:var(--r-m);padding:16px}
+    .card b{display:block;font-family:var(--display);font-size:32px;line-height:1.1}
+    .card span{color:var(--text-2);font-size:13px}
+    .card small{display:block;color:var(--text-3);font-size:12px;margin-top:6px}
+    .filters{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+    .filters button{background:var(--glass);border:1px solid var(--glass-stroke);color:var(--text);border-radius:var(--r-pill);padding:8px 14px;font:inherit;font-size:13px;cursor:pointer;min-height:36px}
+    .filters button[aria-pressed=true]{border-color:var(--green);color:var(--green)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+    .item{background:var(--glass);border:1px solid var(--glass-stroke);border-radius:var(--r-m);overflow:hidden;display:flex;flex-direction:column}
+    .item img{width:100%;aspect-ratio:3/4;object-fit:cover;background:#111;display:block}
+    .item .meta{padding:12px;font-size:13px;color:var(--text-2);display:flex;flex-direction:column;gap:6px}
+    .item .q{color:var(--text);font-weight:500}
+    .tag{display:inline-block;border-radius:var(--r-pill);padding:2px 10px;font-size:12px;font-weight:600}
+    .ok{background:rgba(60,242,166,.14);color:var(--green)}
+    .no{background:rgba(255,92,92,.14);color:var(--red)}
+    .item details{font-size:12px} .item pre{white-space:pre-wrap;font-family:var(--mono);font-size:11px;color:var(--text-2);margin:6px 0 0}
+    table.real{width:100%;border-collapse:collapse;font-size:14px}
+    table.real td,table.real th{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;vertical-align:top}
+    table.real th{color:var(--text-3);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+    .wrap{overflow-x:auto}
+    @media (max-width:600px){table.real{font-size:13px}table.real td,table.real th{padding:8px 4px}}
+    ul.lim{color:var(--text-2);line-height:1.7;padding-left:20px}
+  </style>
+</head>
+<body>
+  <main class="bm" id="top">
+    <a class="back" href="./">← Back to Lens</a>
+    <h1>Public benchmark</h1>
+    <p id="lede">60 new handwritten problems that Lens never saw while we tuned it, from Class 3 arithmetic to PhD analysis, across 11 subjects. Each page has one planted mistake, no mistake, or is an open essay. We ran every one through the live app and publish every result, misses included.</p>
+    <div class="cards" id="cards"></div>
+    <p id="runline" style="font-size:13px;color:var(--text-3)"></p>
+
+    <h2>Real phone photos</h2>
+    <p>Seven real photos of a student's notebook, taken in normal light, three of them sideways. These are the hard cases: dim light, stacked fractions, two columns, and scribbled-out ink.</p>
+    <div class="wrap"><table class="real" id="real"><thead><tr><th>Photo</th><th>What's on it</th><th>Truth</th><th>Lens</th><th></th></tr></thead><tbody></tbody></table></div>
+
+    <h2>Every item</h2>
+    <div class="filters" id="filters"></div>
+    <div class="grid" id="grid"></div>
+
+    <h2>How we scored it</h2>
+    <ul class="lim">
+      <li>A planted mistake counts as found only if Lens names the first wrong line (or quotes its text). Flagging a later line, or saying the page is clean, is a miss.</li>
+      <li>A clean page counts only if Lens claims no mistake. Any flag is a false positive.</li>
+      <li>An essay counts only if Lens says it is open-ended and does not invent a "wrong line".</li>
+      <li>The second look is a separate Muse Spark check that runs only when a mistake is flagged. It re-reads the photo and drops flags it cannot confirm (crossed-out ink, notation, unreadable lines). Its numbers here replay the shipped code on the same first-pass output.</li>
+    </ul>
+
+    <h2>Limitations</h2>
+    <ul class="lim">
+      <li>The 60 pages are rendered handwriting (seven handwriting fonts, blue and black ink, ruled and plain paper, photo noise), not 60 different students. Real photos are harder; that is why we show them separately.</li>
+      <li>One run per item. Model output varies run to run, so expect a few points of swing either way.</li>
+      <li>Planted mistakes are single and deliberate. Real work can hold several slips; Lens reports the first one.</li>
+      <li>Written by the team that built Lens. The images, truth lines and answers are all here so anyone can check us.</li>
+    </ul>
+  </main>
+  <script type="module" src="js/bench.js"></script>
+</body>
+</html>

@@ -1,7 +1,15 @@
 // Meta Model API client: SAM 3.1 (Responses API, SSE) and Muse Spark 1.3 (Chat Completions, JSON schema),
 // plus the merged Knot Scan pipeline used by /api/analyze.
-import { DOUBT_SYSTEM_PROMPT, SAM_MODEL, SAM_PROMPT, SPARK_MODEL, SYSTEM_PROMPT, doubtPrompt, userPrompt } from "./prompt.ts";
-import { DOUBT_SCHEMA, DOUBT_SCHEMA_NAME, KNOT_SCHEMA, KNOT_SCHEMA_NAME, parseAnalysis, parseDoubt, type DoubtAnswer, type KnotAnalysis } from "./schema.ts";
+import {
+  DOUBT_SYSTEM_PROMPT, DOUBT_TEXT_FIELDS, KNOT_TEXT_FIELDS, PRACTICE_SYSTEM_PROMPT, PRACTICE_TEXT_FIELDS, PRACTICE_VERIFY_PROMPT,
+  CONFIRM_SYSTEM_PROMPT, SAM_MODEL, SAM_PROMPT, SPARK_MODEL, SYSTEM_PROMPT, confirmPrompt, doubtPrompt, practicePrompt, prevKnotLine, userPrompt, verifyPrompt, type PrevKnot,
+} from "./prompt.ts";
+import {
+  DOUBT_SCHEMA, DOUBT_SCHEMA_NAME, KNOT_SCHEMA, KNOT_SCHEMA_NAME, PRACTICE_SCHEMA, PRACTICE_SCHEMA_NAME, VERIFY_SCHEMA, VERIFY_SCHEMA_NAME,
+  CONFIRM_SCHEMA, CONFIRM_SCHEMA_NAME, overturnKnot, parseConfirm, type KnotConfirm,
+  applyVerification, parseAnalysis, parseDoubt, parsePractice, parseVerify, type DoubtAnswer, type KnotAnalysis, type PracticeSet,
+} from "./schema.ts";
+import { languageRule, readLang, type LangChoice } from "./lang.ts";
 import { extractSseText, parseSamOutput } from "./sam.ts";
 import { mergeStepBoxes, normalizeSam, segmentationLabel, sortAndMergeRows, type NBox, type StepBox } from "./regions.ts";
 import { orderSteps } from "./order.ts";
@@ -88,9 +96,12 @@ async function sparkJson<T>(apiKey: string, system: string, user: ChatContent, s
   }
 }
 
-export async function runSpark(apiKey: string, imageDataUrl: string, regions: NBox[], fetchImpl: FetchLike = fetch, size: ImageSize | null = dataUrlSize(imageDataUrl)): Promise<SparkResult> {
-  const r = await sparkJson(apiKey, SYSTEM_PROMPT, [
-    { type: "text", text: userPrompt(regions, size) },
+const AUTO: LangChoice = readLang("auto", "en");
+
+export async function runSpark(apiKey: string, imageDataUrl: string, regions: NBox[], fetchImpl: FetchLike = fetch,
+  size: ImageSize | null = dataUrlSize(imageDataUrl), lang: LangChoice = AUTO, prev: PrevKnot | null = null): Promise<SparkResult> {
+  const r = await sparkJson(apiKey, `${SYSTEM_PROMPT}\n${languageRule(lang, KNOT_TEXT_FIELDS)}`, [
+    { type: "text", text: userPrompt(regions, size) + prevKnotLine(prev) },
     { type: "image_url", image_url: { url: imageDataUrl } },
   ], KNOT_SCHEMA_NAME, KNOT_SCHEMA, parseAnalysis, fetchImpl);
   return { analysis: r.value, costUsd: r.costUsd, ms: r.ms };
@@ -103,13 +114,13 @@ export interface DoubtResult { doubt: DoubtAnswer; costUsd: number; ms: number }
  * onSpend is called with the billed cost even when parsing fails.
  */
 export async function runDoubt(apiKey: string, text: string, imageDataUrl: string | null,
-  opts: { fetchImpl?: FetchLike; onSpend?: (usd: number) => void } = {}): Promise<DoubtResult> {
+  opts: { fetchImpl?: FetchLike; onSpend?: (usd: number) => void; lang?: LangChoice } = {}): Promise<DoubtResult> {
   const prompt = doubtPrompt(text, Boolean(imageDataUrl));
   const user: ChatContent = imageDataUrl
     ? [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: imageDataUrl } }]
     : prompt;
   try {
-    const r = await sparkJson(apiKey, DOUBT_SYSTEM_PROMPT, user, DOUBT_SCHEMA_NAME, DOUBT_SCHEMA, parseDoubt, opts.fetchImpl ?? fetch);
+    const r = await sparkJson(apiKey, `${DOUBT_SYSTEM_PROMPT}\n${languageRule(opts.lang ?? AUTO, DOUBT_TEXT_FIELDS)}`, user, DOUBT_SCHEMA_NAME, DOUBT_SCHEMA, parseDoubt, opts.fetchImpl ?? fetch);
     opts.onSpend?.(r.costUsd);
     return { doubt: r.value, costUsd: r.costUsd, ms: r.ms };
   } catch (e) {
@@ -125,6 +136,12 @@ export interface PipelineOptions {
   fetchImpl?: FetchLike;
   /** Called after every billed call so the caller can record spend even if a later call fails. */
   onSpend?: (usd: number) => void;
+  /** Answer language (0.6). Default: auto. */
+  lang?: LangChoice;
+  /** "Rescan to verify": the knot from the previous scan. */
+  prev?: PrevKnot | null;
+  /** 0.6: a second, independent Spark look at the flagged line; overturns knots it cannot confirm. */
+  confirm?: boolean;
 }
 
 export interface PipelineResult {
@@ -137,6 +154,7 @@ export interface PipelineResult {
   image: ImageSize | null;
   sam: { boxes: number; detections: number; calls: number; ms: number };
   spark: { ms: number };
+  confirmation: { checked: boolean; overturned: boolean; reason: string; ms: number };
   costUsd: number;
 }
 
@@ -166,13 +184,27 @@ export async function analyzeImage(apiKey: string, imageDataUrl: string, opts: P
 
   let spark: SparkResult;
   try {
-    spark = await runSpark(apiKey, imageDataUrl, sam.boxes, f, size);
+    spark = await runSpark(apiKey, imageDataUrl, sam.boxes, f, size, opts.lang ?? AUTO, opts.prev ?? null);
   } catch (e) {
     const c = (e as { costUsd?: number }).costUsd;
     if (c) spend(c);
     throw e;
   }
   spend(spark.costUsd);
+
+  let confirmation: { checked: boolean; overturned: boolean; reason: string; ms: number } = { checked: false, overturned: false, reason: "", ms: 0 };
+  if (opts.confirm && spark.analysis.knot && spark.analysis.checkable) {
+    try {
+      const c = await confirmKnot(apiKey, imageDataUrl, spark.analysis, f);
+      spend(c.costUsd);
+      confirmation = { checked: true, overturned: !c.value.confirmed, reason: c.value.reason, ms: c.ms };
+      if (!c.value.confirmed) spark = { ...spark, analysis: overturnKnot(spark.analysis) };
+    } catch (e) {
+      // the second look is best effort: keep the first answer if it fails
+      const c = (e as { costUsd?: number }).costUsd;
+      if (c) spend(c);
+    }
+  }
 
   const status = new Map(spark.analysis.steps.map((s) => [s.n, s.status]));
   const merged = mergeStepBoxes(sam.boxes, spark.analysis.steps).map((b) => ({ ...b, status: status.get(b.step_n) ?? "unclear" }));
@@ -193,6 +225,47 @@ export async function analyzeImage(apiKey: string, imageDataUrl: string, opts: P
     image: size,
     sam: { boxes: sam.boxes.length, detections: sam.detections, calls: samCalls, ms: samMs },
     spark: { ms: spark.ms },
+    confirmation,
     costUsd: cost,
   };
+}
+
+/** Second look: is the flagged line really the first wrong line, in live ink? */
+export async function confirmKnot(apiKey: string, imageDataUrl: string, a: KnotAnalysis, fetchImpl: FetchLike = fetch): Promise<{ value: KnotConfirm; costUsd: number; ms: number }> {
+  const knot = a.knot!;
+  return sparkJson(apiKey, CONFIRM_SYSTEM_PROMPT, [
+    { type: "text", text: confirmPrompt(a.steps, knot) },
+    { type: "image_url", image_url: { url: imageDataUrl } },
+  ], CONFIRM_SCHEMA_NAME, CONFIRM_SCHEMA, parseConfirm, fetchImpl);
+}
+
+export interface PracticeConcept { topic: string; slip: string; level: string; subject: string }
+export interface PracticeResult { practice: PracticeSet; dropped: number; costUsd: number; ms: number }
+
+/**
+ * "Practice my weak spots": Spark writes 3-5 problems for the student's weak concepts, then a second,
+ * independent Spark pass re-solves each one; only problems both passes agree on are returned (verified).
+ * Text only, no image, no SAM. onSpend is called after each billed call.
+ */
+export async function runPractice(apiKey: string, concepts: PracticeConcept[], count: number,
+  opts: { fetchImpl?: FetchLike; onSpend?: (usd: number) => void; lang?: LangChoice } = {}): Promise<PracticeResult> {
+  const f = opts.fetchImpl ?? fetch;
+  const t0 = Date.now();
+  let cost = 0;
+  const billed = async <T>(p: Promise<{ value: T; costUsd: number }>): Promise<T> => {
+    try {
+      const r = await p;
+      cost += r.costUsd; opts.onSpend?.(r.costUsd);
+      return r.value;
+    } catch (e) {
+      const c = (e as { costUsd?: number }).costUsd;
+      if (c) { cost += c; opts.onSpend?.(c); }
+      throw e;
+    }
+  };
+  const set = await billed(sparkJson(apiKey, `${PRACTICE_SYSTEM_PROMPT}\n${languageRule(opts.lang ?? AUTO, PRACTICE_TEXT_FIELDS)}`,
+    practicePrompt(concepts, count), PRACTICE_SCHEMA_NAME, PRACTICE_SCHEMA, parsePractice, f));
+  const checks = await billed(sparkJson(apiKey, PRACTICE_VERIFY_PROMPT, verifyPrompt(set.problems), VERIFY_SCHEMA_NAME, VERIFY_SCHEMA, parseVerify, f));
+  const v = applyVerification(set, checks);
+  return { practice: v.set, dropped: v.dropped, costUsd: cost, ms: Date.now() - t0 };
 }

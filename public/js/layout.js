@@ -104,7 +104,9 @@ export function placeLabels(items, bounds, opt = {}) {
       for (const o of items) if (o !== it) ink += inter(r, o.box);
       // clamping moved it far from where it wanted to be -> it no longer reads as this box's badge
       const drift = Math.abs(r.left - x) + Math.abs(r.top - y);
-      const cost = (hit > 0 ? 1e6 + hit * 100 : 0) + ink * 0.5 + drift * 2 + k;
+      // The knot badge (priority) goes first and must read as attached to its box: covering a little of a
+      // neighbouring box is better than floating it far away (0.5.0, real photo with two dense columns).
+      const cost = (hit > 0 ? 1e6 + hit * 100 : 0) + ink * (it.priority ? 0.05 : 0.5) + drift * 2 + k * (it.priority ? 40 : 1);
       if (cost < bestCost) { bestCost = cost; best = { ...r, side }; }
     });
     placed.push({ left: best.left, top: best.top, width: w, height: h });

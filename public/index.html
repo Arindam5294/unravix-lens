@@ -57,6 +57,11 @@
       <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></symbol>
       <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
+      <symbol id="i-rotl" viewBox="0 0 24 24"><path d="M4.5 9.5A8 8 0 1 1 4 14"/><path d="M4 4.5v5h5"/></symbol>
+      <symbol id="i-rotr" viewBox="0 0 24 24"><path d="M19.5 9.5A8 8 0 1 0 20 14"/><path d="M20 4.5v5h-5"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8M16 7l2.5 2.5M14 9l2 2"/></symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></symbol>
       <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.5 8.5 0 0 1 9.4 4 8.5 8.5 0 1 0 20 14.6z"/></symbol>
     </defs>
   </svg>
@@ -69,8 +74,9 @@
       <span>Unravix <b>Lens</b></span>
     </a>
     <nav class="nav__links" aria-label="Sections">
-      <a href="#scan">Ask Lens</a><a href="#how">How it works</a><a href="#report">Knot Report</a>
+      <a href="#scan" data-i18n="nav_ask">Ask Lens</a><a href="#how" data-i18n="nav_how">How it works</a><a href="#report" data-i18n="nav_report">Knot Report</a><a href="benchmark.html">Benchmark</a>
     </nav>
+    <button class="langbtn" id="lang-btn" type="button" data-action="lang" aria-haspopup="dialog"><svg class="i" aria-hidden="true"><use href="#i-globe"/></svg><span id="lang-cur">Auto</span></button>
     <button class="tg" id="theme" type="button" role="switch" aria-checked="false" aria-label="Light mode">
       <span class="tg__t" aria-hidden="true">
         <svg class="tg__i tg__sun"><use href="#i-sun"/></svg>
@@ -98,7 +104,7 @@
       <div class="hero__copy">
         <p class="eyebrow">Unravix Lens · Class 1 to PhD</p>
         <h1 class="title" id="hero-title">Untangle any study doubt. <em>Class 1 to PhD.</em></h1>
-        <p class="sub">Ask anything, in any subject, and Lens explains it step by step at your level. Or snap your working and Lens finds the exact step where it went wrong, with the fix and three quick check questions.</p>
+        <p class="sub" dir="auto">Ask anything, in any subject, and Lens explains it step by step at your level. Or snap your working and Lens finds the exact step where it went wrong, with the fix and three quick check questions.</p>
         <div class="btns">
           <button class="btn" type="button" data-action="mode-doubt"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg>Ask a doubt</button>
           <button class="btn btn--ghost" type="button" data-action="mode-check"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg>Check my working</button>
@@ -106,7 +112,8 @@
         <ul class="subjects" aria-label="Works across subjects">
           <li>Arithmetic</li><li>Algebra</li><li>Calculus</li><li>Proofs</li><li>Physics</li><li>Chemistry</li><li>Biology</li><li>Statistics</li><li>Accounting</li><li>Economics</li><li>Code</li><li>Grammar</li><li>History</li><li>Geography</li>
         </ul>
-        <p class="powered"><span class="dot" id="api-dot" aria-hidden="true"></span><span id="api-text">Built with Meta SAM 3.1 and Muse Spark</span></p>
+        <p class="powered"><span class="dot" id="api-dot" aria-hidden="true"></span><span id="api-text">Built with Meta SAM 3.1 and Muse Spark</span><span class="chip chip--violet" id="judge-badge" hidden>Judge access</span></p>
+        <p class="judge-note" id="judge-note" role="status" hidden></p>
       </div>
     </section>
 
@@ -114,39 +121,40 @@
     <section class="section" id="scan" aria-labelledby="scan-title">
       <div class="section__head">
         <p class="eyebrow">Ask Lens</p>
-        <h2 id="scan-title">What's tangled?</h2>
+        <h2 id="scan-title" data-i18n="scan_title">What's tangled?</h2>
       </div>
       <div class="modes" role="tablist" aria-label="What do you want Lens to do?">
-        <button class="mode" type="button" role="tab" id="tab-doubt" aria-selected="true" aria-controls="scan-panel" data-mode="doubt"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg><span><b>Ask a doubt</b><small>Type it or snap the question</small></span></button>
-        <button class="mode" type="button" role="tab" id="tab-check" aria-selected="false" aria-controls="scan-panel" data-mode="check" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg><span><b>Check my working</b><small>Lens finds the exact knot</small></span></button>
+        <button class="mode" type="button" role="tab" id="tab-doubt" aria-selected="true" aria-controls="scan-panel" data-mode="doubt"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg><span><b data-i18n="tab_doubt">Ask a doubt</b><small data-i18n="tab_doubt_sub">Type it or snap the question</small></span></button>
+        <button class="mode" type="button" role="tab" id="tab-check" aria-selected="false" aria-controls="scan-panel" data-mode="check" tabindex="-1"><svg class="i" aria-hidden="true"><use href="#i-target"/></svg><span><b data-i18n="tab_check">Check my working</b><small data-i18n="tab_check_sub">Lens finds the exact knot</small></span></button>
       </div>
 
       <div class="scan glass" id="scan-panel" data-state="idle" data-mode="doubt" role="tabpanel" aria-labelledby="tab-doubt">
         <!-- idle: Ask a doubt -->
         <form class="ask" id="ask" data-view="idle" data-for="doubt" novalidate>
-          <label class="ask__label" for="ask-text">Your question or doubt, in any subject</label>
+          <label class="ask__label" for="ask-text" data-i18n="ask_label">Your question or doubt, in any subject and any language</label>
           <div class="ask__box" id="ask-box">
-            <textarea id="ask-text" name="text" rows="4" maxlength="2000" placeholder="e.g. Why do we borrow in 52 &minus; 27?  ·  What's the difference between osmosis and diffusion?  ·  Why is binary search O(log n)?" aria-describedby="ask-hint"></textarea>
+            <textarea dir="auto" id="ask-text" name="text" rows="4" maxlength="2000" placeholder="e.g. Why do we borrow in 52 &minus; 27?  ·  What's the difference between osmosis and diffusion?  ·  Why is binary search O(log n)?" aria-describedby="ask-hint"></textarea>
             <div class="ask__thumb" id="ask-thumb" hidden>
               <img id="ask-img" alt="Attached photo of your question" />
               <button class="ask__rm" type="button" id="ask-rm" aria-label="Remove photo"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
             </div>
             <div class="ask__bar">
-              <label class="btn btn--ghost btn--sm" for="ask-file"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg><span class="only-touch">Snap question</span><span class="only-desk">Add a photo</span></label>
+              <label class="btn btn--ghost btn--sm" for="ask-file"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg><span class="only-touch" data-i18n="snap_q">Snap question</span><span class="only-desk" data-i18n="add_photo">Add a photo</span></label>
+              <button class="btn btn--ghost btn--sm mic" type="button" id="ask-mic" aria-pressed="false" data-state="idle"><svg class="i" aria-hidden="true"><use href="#i-mic"/></svg><span id="ask-mic-t">Speak</span></button>
               <span class="ask__count" id="ask-count" aria-live="polite">0 / 2000</span>
-              <button class="btn btn--sm" type="submit" id="ask-go"><svg class="i" aria-hidden="true"><use href="#i-send"/></svg>Ask Lens</button>
+              <button class="btn btn--sm" type="submit" id="ask-go"><svg class="i" aria-hidden="true"><use href="#i-send"/></svg><span data-i18n="ask_go">Ask Lens</span></button>
             </div>
             <input class="vh" id="ask-file" type="file" accept="image/*,.heic,.heif" />
           </div>
-          <p class="ask__hint" id="ask-hint">Type a question, photograph a question or a textbook passage, or both. Lens works out the subject and your level, from Class 1 to PhD.</p>
+          <p class="ask__hint" id="ask-hint" dir="auto">Type a question, photograph a question or a textbook passage, or both. Lens works out the subject and your level, from Class 1 to PhD.</p>
           <div class="examples" role="group" aria-label="Example doubts">
-            <button type="button" class="ex" data-ex="Why do we borrow in 52 - 27? I am in class 3."><span>Class 3</span>Why do we borrow in 52 &minus; 27?</button>
-            <button type="button" class="ex" data-ex="Class 9 biology: what is the difference between osmosis and diffusion?"><span>Class 9</span>Osmosis vs diffusion</button>
-            <button type="button" class="ex" data-ex="Depreciation does not take any cash out of the business, so why does it reduce the net profit?"><span>Class 11</span>Why does depreciation cut profit?</button>
-            <button type="button" class="ex" data-ex="Why is binary search O(log n)? Where exactly does the log come from?"><span>Undergrad</span>Why is binary search O(log n)?</button>
+            <button type="button" dir="auto" class="ex" data-ex="Why do we borrow in 52 - 27? I am in class 3."><span>Class 3</span>Why do we borrow in 52 &minus; 27?</button>
+            <button type="button" dir="auto" class="ex" data-ex="Class 9 biology: what is the difference between osmosis and diffusion?"><span>Class 9</span>Osmosis vs diffusion</button>
+            <button type="button" dir="auto" class="ex" data-ex="Depreciation does not take any cash out of the business, so why does it reduce the net profit?"><span>Class 11</span>Why does depreciation cut profit?</button>
+            <button type="button" dir="auto" class="ex" data-ex="Why is binary search O(log n)? Where exactly does the log come from?"><span>Undergrad</span>Why is binary search O(log n)?</button>
           </div>
           <div class="btns">
-            <button class="btn btn--ghost btn--sm" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>See a sample answer</button>
+            <button class="btn btn--ghost btn--sm" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg><span data-i18n="sample_answer">See a sample answer</span></button>
           </div>
           <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b>Keep names and personal info out of questions and photos.</b> Lens answers and does not store them.</span></p>
         </form>
@@ -155,12 +163,12 @@
         <div class="drop" id="drop" data-view="idle" data-for="check">
           <div class="drop__zone" id="dropzone">
             <div class="drop__icon" aria-hidden="true"><svg class="i"><use href="#i-camera"/></svg></div>
-            <p class="drop__title"><span class="only-touch">Snap one piece of working</span><span class="only-desk">Drop a photo of your working here</span></p>
-            <p class="drop__hint">Any subject that has steps: sums, equations, proofs, journal entries, code traces, grammar transformations. Lens shrinks the photo to 1600 px and strips location data first.</p>
+            <p class="drop__title"><span class="only-touch" data-i18n="drop_touch">Snap one piece of working</span><span class="only-desk" data-i18n="drop_desk">Drop a photo of your working here</span></p>
+            <p class="drop__hint" dir="auto">Any subject that has steps: sums, equations, proofs, journal entries, code traces, grammar transformations. Lens shrinks the photo to 1600 px and strips location data first.</p>
             <div class="btns btns--center">
-              <label class="btn only-touch-flex" for="file-camera"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>Open camera</label>
-              <label class="btn btn--ghost btn--upload" for="file-any"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg>Choose a photo</label>
-              <button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Try a sample</button>
+              <label class="btn only-touch-flex" for="file-camera"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg><span data-i18n="open_camera">Open camera</span></label>
+              <label class="btn btn--ghost btn--upload" for="file-any"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg><span data-i18n="choose_photo">Choose a photo</span></label>
+              <button class="btn btn--ghost" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg><span data-i18n="try_sample">Try a sample</span></button>
             </div>
             <input class="vh" id="file-camera" type="file" accept="image/*" capture="environment" />
             <input class="vh" id="file-any" type="file" accept="image/*,.heic,.heif" />
@@ -190,7 +198,11 @@
           <div class="side">
             <div class="progress" data-view="working" role="status" aria-live="polite">
               <ol class="progress__list" id="progress"></ol>
+              <p class="progress__slow" id="slow-hint" hidden>Busy pages take up to a minute. Still reading every line…</p>
             </div>
+
+            <!-- preview: rotate before scanning -->
+            <article class="card glass pv" id="preview-card" data-view="preview" aria-live="polite"></article>
 
             <!-- scanning skeleton -->
             <div class="card glass skel" id="skel" data-view="working" aria-hidden="true">
@@ -236,8 +248,34 @@
     </section>
   </main>
 
+  <dialog class="dlg glass" id="judge-dlg" aria-labelledby="judge-title">
+    <form id="judge-form" method="dialog" novalidate>
+      <h3 id="judge-title">Judge access</h3>
+      <p>Hackathon judges get their own daily allowance, separate from the public limit. Paste the code from the submission.</p>
+      <label class="vh" for="judge-code">Judge code</label>
+      <input id="judge-code" name="code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="lens-judge-…" maxlength="200" />
+      <div class="btns">
+        <button class="btn" type="submit" value="save">Use this code</button>
+        <button class="btn btn--ghost" type="button" id="judge-remove" hidden>Remove code</button>
+        <button class="btn btn--ghost" type="submit" value="cancel" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dlg glass lang" id="lang-dlg" aria-labelledby="lang-title">
+    <div class="lang__top">
+      <h3 id="lang-title">Language</h3>
+      <button class="lang__x" type="button" id="lang-close" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <p class="lang__note">Lens explains, hints and asks its check questions in this language. Maths, formulas and code stay as written.</p>
+    <label class="vh" for="lang-q">Search languages</label>
+    <input id="lang-q" type="search" autocomplete="off" spellcheck="false" placeholder="Search 65 languages" />
+    <ul class="lang__list" id="lang-list"></ul>
+  </dialog>
+
   <footer class="foot">
     <span>© 2026 Swanix Labs</span>
+    <button class="foot__link" type="button" data-action="judge">Judges: access code</button>
     <span>Unravix Lens · any study doubt, Class 1 to PhD · built with Meta SAM 3.1 and Muse Spark 1.3</span>
   </footer>
 </body>

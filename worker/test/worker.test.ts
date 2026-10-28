@@ -58,7 +58,7 @@ test("GET /api/health", async () => {
   const body = (await res.json()) as { ok: boolean; configured: boolean; version: string };
   assert.equal(body.ok, true);
   assert.equal(body.configured, false);
-  assert.match(body.version, /^0\.4\.0/);
+  assert.match(body.version, /^0\.6\.0/);
 });
 
 test("method, route and configuration errors use the JSON error shape", async () => {
@@ -97,7 +97,7 @@ test("validateImage checks type, size and file signature", () => {
 
 test("analyze: SAM finds 1 line -> one SAM call only, Spark boxes fill the rest, spend recorded", async () => {
   const kv = new MemKV();
-  const res = await worker.fetch(post({ image: JPEG }), mkEnv(kv));
+  const res = await worker.fetch(post({ image: JPEG }), mkEnv(kv, { CONFIRM_KNOT: "0" }));
   assert.equal(res.status, 200);
   const body = (await res.json()) as any;
   assert.equal(body.ok, true);
