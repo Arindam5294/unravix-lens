@@ -148,6 +148,7 @@ export const STRINGS = {
     weak_title: "Your weak spots", practice: "Practice my weak spots", practice_busy: "Writing problems, then double-checking every answer…", clear_all: "Clear all", remove: "Remove",
     profile_privacy: "Your Knot profile is stored only on this device. Nothing about you is sent to a server.",
     practice_title: "Practice set", verified: "Double-checked by a second Muse Spark pass", show_answer: "Show answer", hint: "Hint", fixed: "untied",
+    ask_help: "Type a question, photograph a question or a textbook passage, or both. Lens works out the subject and your level, from Class 1 to PhD.", ask_empty: "Type a question first, or add a photo of it.", drop_hint: "Any subject that has steps: sums, equations, proofs, journal entries, code traces, grammar transformations. Lens shrinks the photo to 1600 px and strips location data first.", priv_doubt_b: "Keep names and personal info out of questions and photos.", priv_doubt: "Lens answers and does not store them.", priv_check_b: "Keep names and personal info out of the photo.", priv_check: "Photos are analysed and not stored. Your Knot Report stays on this device.", leg_ok: "Untied", leg_knot: "Knotted", leg_carry: "Carried error",
   },
   hi: {
     speak: "बोलें", listening: "सुन रहा है… रोकने के लिए टैप करें", transcribing: "Muse Voice लिख रहा है…", mic_denied: "आपका डाउट सुनने के लिए Lens को माइक्रोफ़ोन चाहिए। आप टाइप भी कर सकते हैं।", voice_hint: "अपनी भाषा में बोलें, Muse Voice लिख देगा। जाँचें, फिर Lens से पूछें दबाएँ।",
@@ -167,6 +168,7 @@ export const STRINGS = {
     weak_title: "आपके कमज़ोर विषय", practice: "कमज़ोर विषयों का अभ्यास करें", practice_busy: "प्रश्न बन रहे हैं, फिर हर उत्तर दोबारा जाँचा जा रहा है…", clear_all: "सब हटाएँ", remove: "हटाएँ",
     profile_privacy: "आपकी गाँठ प्रोफ़ाइल सिर्फ़ इसी डिवाइस पर रहती है। आपके बारे में कुछ भी सर्वर पर नहीं भेजा जाता।",
     practice_title: "अभ्यास सेट", verified: "दूसरी Muse Spark जाँच से पक्का किया गया", show_answer: "उत्तर देखें", hint: "संकेत", fixed: "सुलझा",
+    ask_help: "प्रश्न टाइप करें, प्रश्न या किताब के हिस्से की फ़ोटो लें, या दोनों। Lens विषय और आपका स्तर खुद पहचानता है, कक्षा 1 से PhD तक।", ask_empty: "पहले प्रश्न टाइप करें, या उसकी फ़ोटो जोड़ें।", drop_hint: "कोई भी विषय जिसमें स्टेप हों: सवाल, समीकरण, प्रमाण, जर्नल एंट्री, कोड ट्रेस, व्याकरण परिवर्तन। Lens पहले फ़ोटो को 1600 px तक छोटा करता है और लोकेशन डेटा हटा देता है।", priv_doubt_b: "प्रश्नों और फ़ोटो में नाम और निजी जानकारी न डालें।", priv_doubt: "Lens उत्तर देता है और उन्हें सेव नहीं करता।", priv_check_b: "फ़ोटो में नाम और निजी जानकारी न रखें।", priv_check: "फ़ोटो जाँची जाती हैं और सेव नहीं होतीं। आपकी गाँठ रिपोर्ट इसी डिवाइस पर रहती है।", leg_ok: "सही", leg_knot: "गाँठ", leg_carry: "आगे बढ़ी गलती",
   },
   or: {
     speak: "କୁହନ୍ତୁ", listening: "ଶୁଣୁଛି… ବନ୍ଦ କରିବାକୁ ଟ୍ୟାପ୍ କରନ୍ତୁ", transcribing: "Muse Voice ଲେଖୁଛି…", mic_denied: "ଆପଣଙ୍କ ସନ୍ଦେହ ଶୁଣିବା ପାଇଁ Lens କୁ ମାଇକ୍ରୋଫୋନ୍ ଦରକାର। ଆପଣ ଟାଇପ୍ ମଧ୍ୟ କରିପାରିବେ।", voice_hint: "ନିଜ ଭାଷାରେ କୁହନ୍ତୁ, Muse Voice ଲେଖିଦେବ। ଯାଞ୍ଚ କରି Lens କୁ ପଚାରନ୍ତୁ।",
@@ -186,6 +188,7 @@ export const STRINGS = {
     weak_title: "ଆପଣଙ୍କ ଦୁର୍ବଳ ବିଷୟ", practice: "ଦୁର୍ବଳ ବିଷୟର ଅଭ୍ୟାସ କରନ୍ତୁ", practice_busy: "ପ୍ରଶ୍ନ ତିଆରି ହେଉଛି, ତା'ପରେ ପ୍ରତ୍ୟେକ ଉତ୍ତର ପୁଣି ଯାଞ୍ଚ ହେଉଛି…", clear_all: "ସବୁ ହଟାନ୍ତୁ", remove: "ହଟାନ୍ତୁ",
     profile_privacy: "ଆପଣଙ୍କ ଗଣ୍ଠି ପ୍ରୋଫାଇଲ୍ କେବଳ ଏହି ଡିଭାଇସରେ ରହେ। ଆପଣଙ୍କ ବିଷୟରେ କିଛି ସର୍ଭରକୁ ପଠାଯାଏ ନାହିଁ।",
     practice_title: "ଅଭ୍ୟାସ ସେଟ୍", verified: "ଦ୍ୱିତୀୟ Muse Spark ଯାଞ୍ଚରେ ନିଶ୍ଚିତ", show_answer: "ଉତ୍ତର ଦେଖନ୍ତୁ", hint: "ସୂଚନା", fixed: "ସମାଧାନ ହେଲା",
+    ask_help: "ପ୍ରଶ୍ନ ଟାଇପ୍ କରନ୍ତୁ, ପ୍ରଶ୍ନ ବା ପାଠ୍ୟପୁସ୍ତକର ଅଂଶର ଫଟୋ ନିଅନ୍ତୁ, କିମ୍ବା ଦୁଇଟି ଯାକ। Lens ବିଷୟ ଓ ଆପଣଙ୍କ ସ୍ତର ନିଜେ ଚିହ୍ନଟ କରେ, ଶ୍ରେଣୀ 1 ରୁ PhD ପର୍ଯ୍ୟନ୍ତ।", ask_empty: "ପ୍ରଥମେ ପ୍ରଶ୍ନ ଟାଇପ୍ କରନ୍ତୁ, କିମ୍ବା ତାହାର ଫଟୋ ଯୋଡନ୍ତୁ।", drop_hint: "ଷ୍ଟେପ୍ ଥିବା ଯେକୌଣସି ବିଷୟ: ଅଙ୍କ, ସମୀକରଣ, ପ୍ରମାଣ, ଜର୍ଣ୍ଣାଲ ଏଣ୍ଟ୍ରି, କୋଡ୍ ଟ୍ରେସ୍, ବ୍ୟାକରଣ ପରିବର୍ତ୍ତନ। Lens ପ୍ରଥମେ ଫଟୋକୁ 1600 px କୁ ଛୋଟ କରେ ଓ ଲୋକେସନ୍ ତଥ୍ୟ ହଟାଇଦିଏ।", priv_doubt_b: "ପ୍ରଶ୍ନ ଓ ଫଟୋରେ ନାମ ଓ ବ୍ୟକ୍ତିଗତ ତଥ୍ୟ ଦିଅନ୍ତୁ ନାହିଁ।", priv_doubt: "Lens ଉତ୍ତର ଦିଏ ଓ ସେଗୁଡ଼ିକୁ ସଞ୍ଚୟ କରେ ନାହିଁ।", priv_check_b: "ଫଟୋରେ ନାମ ଓ ବ୍ୟକ୍ତିଗତ ତଥ୍ୟ ରଖନ୍ତୁ ନାହିଁ।", priv_check: "ଫଟୋ ଯାଞ୍ଚ ହୁଏ ଓ ସଞ୍ଚୟ ହୁଏ ନାହିଁ। ଆପଣଙ୍କ ଗଣ୍ଠି ରିପୋର୍ଟ ଏହି ଡିଭାଇସରେ ହିଁ ରହେ।", leg_ok: "ଠିକ୍", leg_knot: "ଗଣ୍ଠି", leg_carry: "ଆଗକୁ ବହିଥିବା ଭୁଲ",
   },
   bn: {
     speak: "বলুন", listening: "শুনছি… থামাতে ট্যাপ করুন", transcribing: "Muse Voice লিখছে…", mic_denied: "আপনার প্রশ্ন শুনতে Lens-এর মাইক্রোফোন দরকার। আপনি টাইপও করতে পারেন।", voice_hint: "নিজের ভাষায় বলুন, Muse Voice লিখে দেবে। দেখে নিয়ে Lens-কে জিজ্ঞাসা করুন।",
@@ -205,6 +208,7 @@ export const STRINGS = {
     weak_title: "আপনার দুর্বল জায়গা", practice: "দুর্বল জায়গা অনুশীলন করুন", practice_busy: "প্রশ্ন তৈরি হচ্ছে, তারপর প্রতিটি উত্তর আবার যাচাই হচ্ছে…", clear_all: "সব মুছুন", remove: "মুছুন",
     profile_privacy: "আপনার গিঁট প্রোফাইল শুধু এই ডিভাইসে থাকে। আপনার সম্পর্কে কিছুই সার্ভারে পাঠানো হয় না।",
     practice_title: "অনুশীলন সেট", verified: "দ্বিতীয় Muse Spark যাচাইয়ে নিশ্চিত", show_answer: "উত্তর দেখুন", hint: "ইঙ্গিত", fixed: "খোলা হয়েছে",
+    ask_help: "প্রশ্ন টাইপ করুন, প্রশ্ন বা বইয়ের অংশের ছবি তুলুন, অথবা দুটোই। Lens বিষয় আর আপনার স্তর নিজেই বুঝে নেয়, ক্লাস 1 থেকে PhD পর্যন্ত।", ask_empty: "আগে প্রশ্ন টাইপ করুন, অথবা তার ছবি যোগ করুন।", drop_hint: "যে কোনো বিষয় যাতে ধাপ আছে: অঙ্ক, সমীকরণ, প্রমাণ, জার্নাল এন্ট্রি, কোড ট্রেস, ব্যাকরণ রূপান্তর। Lens আগে ছবিটি 1600 px-এ ছোট করে এবং লোকেশন ডেটা মুছে দেয়।", priv_doubt_b: "প্রশ্ন ও ছবিতে নাম আর ব্যক্তিগত তথ্য দেবেন না।", priv_doubt: "Lens উত্তর দেয় এবং সেগুলো সংরক্ষণ করে না।", priv_check_b: "ছবিতে নাম আর ব্যক্তিগত তথ্য রাখবেন না।", priv_check: "ছবি বিশ্লেষণ করা হয়, সংরক্ষণ করা হয় না। আপনার গিঁট রিপোর্ট এই ডিভাইসেই থাকে।", leg_ok: "ঠিক", leg_knot: "গিঁট", leg_carry: "বয়ে চলা ভুল",
   },
   ta: {
     speak: "பேசுங்கள்", listening: "கேட்கிறது… நிறுத்த தட்டவும்", transcribing: "Muse Voice எழுதுகிறது…", mic_denied: "உங்கள் சந்தேகத்தைக் கேட்க Lens-க்கு மைக்ரோஃபோன் தேவை. தட்டச்சும் செய்யலாம்.", voice_hint: "உங்கள் மொழியில் பேசுங்கள், Muse Voice எழுதும். சரிபார்த்து Lens-இடம் கேளுங்கள்.",
@@ -224,6 +228,7 @@ export const STRINGS = {
     weak_title: "உங்கள் பலவீனமான பகுதிகள்", practice: "பலவீனமான பகுதிகளைப் பயிற்சி செய்", practice_busy: "கேள்விகள் உருவாகின்றன, பிறகு ஒவ்வொரு பதிலும் மீண்டும் சரிபார்க்கப்படுகிறது…", clear_all: "அனைத்தையும் அழி", remove: "நீக்கு",
     profile_privacy: "உங்கள் முடிச்சு சுயவிவரம் இந்தச் சாதனத்தில் மட்டுமே சேமிக்கப்படுகிறது. உங்களைப் பற்றி எதுவும் சர்வருக்கு அனுப்பப்படாது.",
     practice_title: "பயிற்சித் தொகுப்பு", verified: "இரண்டாவது Muse Spark சரிபார்ப்பால் உறுதி செய்யப்பட்டது", show_answer: "பதிலைக் காட்டு", hint: "குறிப்பு", fixed: "அவிழ்ந்தது",
+    ask_help: "கேள்வியை தட்டச்சு செய்யுங்கள், கேள்வி அல்லது பாடப்புத்தகப் பகுதியைப் படம் எடுங்கள், அல்லது இரண்டும். Lens பாடத்தையும் உங்கள் நிலையையும் தானே கண்டறியும், வகுப்பு 1 முதல் PhD வரை.", ask_empty: "முதலில் கேள்வியை தட்டச்சு செய்யுங்கள், அல்லது அதன் படத்தைச் சேர்க்கவும்.", drop_hint: "படிகள் உள்ள எந்தப் பாடமும்: கணக்குகள், சமன்பாடுகள், நிரூபணங்கள், கணக்குப் பதிவுகள், குறியீடு தடங்கள், இலக்கண மாற்றங்கள். Lens முதலில் படத்தை 1600 px ஆகக் குறைத்து இருப்பிடத் தரவை நீக்கும்.", priv_doubt_b: "கேள்விகளிலும் படங்களிலும் பெயர்கள், தனிப்பட்ட விவரங்களைத் தவிர்க்கவும்.", priv_doubt: "Lens பதில் தரும், அவற்றைச் சேமிக்காது.", priv_check_b: "படத்தில் பெயர்கள், தனிப்பட்ட விவரங்களைத் தவிர்க்கவும்.", priv_check: "படங்கள் பகுப்பாய்வு செய்யப்படும், சேமிக்கப்படாது. உங்கள் முடிச்சு அறிக்கை இந்தச் சாதனத்திலேயே இருக்கும்.", leg_ok: "சரி", leg_knot: "முடிச்சு", leg_carry: "தொடர்ந்த பிழை",
   },
   es: {
     speak: "Hablar", listening: "Escuchando… toca para parar", transcribing: "Muse Voice lo está escribiendo…", mic_denied: "Lens necesita el micrófono para oír tu duda. También puedes escribirla.", voice_hint: "Habla en tu idioma y Muse Voice lo escribe. Revísalo y toca Preguntar.",
@@ -243,6 +248,7 @@ export const STRINGS = {
     weak_title: "Tus puntos débiles", practice: "Practicar mis puntos débiles", practice_busy: "Escribiendo problemas y comprobando cada respuesta dos veces…", clear_all: "Borrar todo", remove: "Quitar",
     profile_privacy: "Tu perfil de nudos se guarda solo en este dispositivo. No se envía nada sobre ti a ningún servidor.",
     practice_title: "Práctica", verified: "Comprobado por una segunda pasada de Muse Spark", show_answer: "Ver respuesta", hint: "Pista", fixed: "desatado",
+    ask_help: "Escribe una pregunta, fotografía una pregunta o un fragmento del libro, o ambas cosas. Lens detecta la materia y tu nivel, de primaria a doctorado.", ask_empty: "Escribe primero una pregunta o añade una foto.", drop_hint: "Cualquier materia con pasos: cuentas, ecuaciones, demostraciones, asientos contables, trazas de código, transformaciones gramaticales. Lens reduce la foto a 1600 px y borra los datos de ubicación antes de enviarla.", priv_doubt_b: "No pongas nombres ni datos personales en preguntas y fotos.", priv_doubt: "Lens responde y no las guarda.", priv_check_b: "No pongas nombres ni datos personales en la foto.", priv_check: "Las fotos se analizan y no se guardan. Tu Informe de nudos se queda en este dispositivo.", leg_ok: "Correcto", leg_knot: "Nudo", leg_carry: "Error arrastrado",
   },
   ar: {
     speak: "تحدّث", listening: "أستمع… اضغط للإيقاف", transcribing: "Muse Voice يكتب ما قلته…", mic_denied: "يحتاج Lens إلى الميكروفون لسماع سؤالك. يمكنك كتابته بدلاً من ذلك.", voice_hint: "تحدّث بلغتك وسيكتبه Muse Voice. راجعه ثم اضغط اسأل.",
@@ -262,6 +268,7 @@ export const STRINGS = {
     weak_title: "نقاط ضعفك", practice: "تدرّب على نقاط ضعفي", practice_busy: "نكتب المسائل ثم نتحقق من كل إجابة مرتين…", clear_all: "امسح الكل", remove: "إزالة",
     profile_privacy: "ملف العُقد محفوظ على هذا الجهاز فقط. لا يُرسل أي شيء عنك إلى أي خادم.",
     practice_title: "مجموعة تدريب", verified: "تحقّق منها تمرير ثانٍ من Muse Spark", show_answer: "أظهر الإجابة", hint: "تلميح", fixed: "محلولة",
+    ask_help: "اكتب سؤالًا، أو صوّر سؤالًا أو مقطعًا من الكتاب، أو الاثنين معًا. يحدد Lens المادة ومستواك، من الصف الأول حتى الدكتوراه.", ask_empty: "اكتب سؤالًا أولًا، أو أضف صورة له.", drop_hint: "أي مادة فيها خطوات: حسابات، معادلات، براهين، قيود محاسبية، تتبّع شيفرة، تحويلات نحوية. يصغّر Lens الصورة إلى 1600 بكسل ويحذف بيانات الموقع أولًا.", priv_doubt_b: "لا تضع الأسماء أو المعلومات الشخصية في الأسئلة والصور.", priv_doubt: "يجيب Lens ولا يحفظها.", priv_check_b: "لا تضع الأسماء أو المعلومات الشخصية في الصورة.", priv_check: "تُحلَّل الصور ولا تُحفظ. يبقى تقرير العُقد على هذا الجهاز.", leg_ok: "صحيح", leg_knot: "عُقدة", leg_carry: "خطأ منقول",
   },
   zh: {
     speak: "说话", listening: "正在听… 点按停止", transcribing: "Muse Voice 正在转写…", mic_denied: "Lens 需要麦克风才能听到你的问题。你也可以直接输入。", voice_hint: "用你的语言说出来，Muse Voice 会写下来。检查后点按提问。",
@@ -281,5 +288,6 @@ export const STRINGS = {
     weak_title: "你的薄弱点", practice: "练习我的薄弱点", practice_busy: "正在出题，并逐题二次核对答案…", clear_all: "全部清除", remove: "移除",
     profile_privacy: "你的症结档案只保存在这台设备上，不会向服务器发送任何关于你的信息。",
     practice_title: "练习题", verified: "已由第二次 Muse Spark 独立核对", show_answer: "显示答案", hint: "提示", fixed: "已解开",
+    ask_help: "输入问题，拍下题目或课本段落，或两者都用。Lens 会判断学科和你的水平，从一年级到博士。", ask_empty: "请先输入问题，或添加题目照片。", drop_hint: "任何有步骤的学科：计算、方程、证明、会计分录、代码追踪、语法转换。Lens 会先把照片缩小到 1600 px 并去除位置信息。", priv_doubt_b: "问题和照片里不要写姓名和个人信息。", priv_doubt: "Lens 只作答，不会保存。", priv_check_b: "照片里不要出现姓名和个人信息。", priv_check: "照片仅用于分析，不会保存。你的错题报告只保存在本设备上。", leg_ok: "正确", leg_knot: "错结", leg_carry: "连带错误",
   },
 };

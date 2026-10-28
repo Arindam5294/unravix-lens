@@ -146,7 +146,7 @@
             </div>
             <input class="vh" id="ask-file" type="file" accept="image/*,.heic,.heif" />
           </div>
-          <p class="ask__hint" id="ask-hint" dir="auto">Type a question, photograph a question or a textbook passage, or both. Lens works out the subject and your level, from Class 1 to PhD.</p>
+          <p class="ask__hint" id="ask-hint" dir="auto" data-i18n="ask_help">Type a question, photograph a question or a textbook passage, or both. Lens works out the subject and your level, from Class 1 to PhD.</p>
           <div class="examples" role="group" aria-label="Example doubts">
             <button type="button" dir="auto" class="ex" data-ex="Why do we borrow in 52 - 27? I am in class 3."><span>Class 3</span>Why do we borrow in 52 &minus; 27?</button>
             <button type="button" dir="auto" class="ex" data-ex="Class 9 biology: what is the difference between osmosis and diffusion?"><span>Class 9</span>Osmosis vs diffusion</button>
@@ -156,7 +156,7 @@
           <div class="btns">
             <button class="btn btn--ghost btn--sm" type="button" data-action="sample"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg><span data-i18n="sample_answer">See a sample answer</span></button>
           </div>
-          <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b>Keep names and personal info out of questions and photos.</b> Lens answers and does not store them.</span></p>
+          <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b data-i18n="priv_doubt_b">Keep names and personal info out of questions and photos.</b> <span data-i18n="priv_doubt">Lens answers and does not store them.</span></span></p>
         </form>
 
         <!-- idle: Check my working -->
@@ -164,7 +164,7 @@
           <div class="drop__zone" id="dropzone">
             <div class="drop__icon" aria-hidden="true"><svg class="i"><use href="#i-camera"/></svg></div>
             <p class="drop__title"><span class="only-touch" data-i18n="drop_touch">Snap one piece of working</span><span class="only-desk" data-i18n="drop_desk">Drop a photo of your working here</span></p>
-            <p class="drop__hint" dir="auto">Any subject that has steps: sums, equations, proofs, journal entries, code traces, grammar transformations. Lens shrinks the photo to 1600 px and strips location data first.</p>
+            <p class="drop__hint" dir="auto" data-i18n="drop_hint">Any subject that has steps: sums, equations, proofs, journal entries, code traces, grammar transformations. Lens shrinks the photo to 1600 px and strips location data first.</p>
             <div class="btns btns--center">
               <label class="btn only-touch-flex" for="file-camera"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg><span data-i18n="open_camera">Open camera</span></label>
               <label class="btn btn--ghost btn--upload" for="file-any"><svg class="i" aria-hidden="true"><use href="#i-upload"/></svg><span data-i18n="choose_photo">Choose a photo</span></label>
@@ -173,11 +173,11 @@
             <input class="vh" id="file-camera" type="file" accept="image/*" capture="environment" />
             <input class="vh" id="file-any" type="file" accept="image/*,.heic,.heif" />
           </div>
-          <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b>Keep names and personal info out of the photo.</b> Photos are analysed and not stored. Your Knot Report stays on this device.</span></p>
+          <p class="privacy"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><span><b data-i18n="priv_check_b">Keep names and personal info out of the photo.</b> <span data-i18n="priv_check">Photos are analysed and not stored. Your Knot Report stays on this device.</span></span></p>
           <ul class="legend" aria-label="Colour key">
-            <li><span class="sw sw--ok"></span>Untied</li>
-            <li><span class="sw sw--knot"></span>Knotted</li>
-            <li><span class="sw sw--carry"></span>Carried error</li>
+            <li><span class="sw sw--ok"></span><span data-i18n="leg_ok">Untied</span></li>
+            <li><span class="sw sw--knot"></span><span data-i18n="leg_knot">Knotted</span></li>
+            <li><span class="sw sw--carry"></span><span data-i18n="leg_carry">Carried error</span></li>
           </ul>
         </div>
 

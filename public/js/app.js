@@ -501,7 +501,7 @@ async function submitDoubt(text, img) {
     const ta = $("#ask-text");
     ta.focus();
     ta.setAttribute("aria-invalid", "true");
-    $("#ask-hint").textContent = "Type a question first, or add a photo of it.";
+    $("#ask-hint").textContent = tt("ask_empty");
     return;
   }
   $("#ask-text").removeAttribute("aria-invalid");
